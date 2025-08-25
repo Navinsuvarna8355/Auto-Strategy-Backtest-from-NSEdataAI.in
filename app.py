@@ -8,10 +8,18 @@ from datetime import datetime, timedelta
 # --- App ka UI aur setup ---
 st.set_page_config(page_title="Share Market Backtest Tool", layout="wide")
 st.title("💰 Automatic Share Market Backtest Tool")
-st.write("Is tool mein, aap kisi bhi stock ka pichle 3 saal ka data download kar sakte hain aur Moving Average Crossover strategy ka upyog karke backtest kar sakte hain.")
+st.write("Is tool mein, aap kisi bhi stock ka pichle 3 saal ka data download kar sakte hain aur 'Disparity Index' strategy ka upyog karke backtest kar sakte hain.")
 
-# User se stock symbol input lene ke liye
-stock_symbol = st.text_input("Stock Symbol (NSE ke liye '.NS' jod dein, jaise: RELIANCE.NS)", "RELIANCE.NS")
+# User se stock symbol aur strategy parameters input lene ke liye
+col_input, col_params = st.columns(2)
+with col_input:
+    stock_symbol = st.text_input("Stock Symbol (NSE ke liye '.NS' jod dein, jaise: RELIANCE.NS)", "RELIANCE.NS")
+
+with col_params:
+    st.subheader("Disparity Index Parameters")
+    length = st.number_input("Length (L)", min_value=1, value=29)
+    short_period = st.number_input("Short Period", min_value=1, value=27)
+    long_period = st.number_input("Long Period", min_value=1, value=81)
 
 # Backtest shuru karne ke liye button
 run_button = st.button("Backtest Chalao")
@@ -22,8 +30,6 @@ run_button = st.button("Backtest Chalao")
 def get_historical_data(symbol, start_date, end_date):
     """
     Yahoo Finance se historical stock data download karta hai.
-    Note: NSE se seedhe data download karna thoda mushkil hai, isliye
-    main yaha yfinance library ka upyog kar raha hu jo reliable data deta hai.
     """
     try:
         data = yf.download(symbol, start=start_date, end=end_date)
@@ -34,39 +40,48 @@ def get_historical_data(symbol, start_date, end_date):
         st.error(f"Data download karte samay error hua: {e}. Kripya sahi symbol check karein.")
         return None
 
-def run_backtest(df):
+def run_backtest(df, length, short_period, long_period):
     """
-    Moving Average Crossover strategy ke basis par backtest chalaata hai.
-    Short-term MA > Long-term MA = Buy signal.
-    Short-term MA < Long-term MA = Sell signal.
+    Disparity Index strategy ke basis par backtest chalaata hai.
+    hsp_short > hsp_long = Buy signal.
+    hsp_short < hsp_long = Sell signal.
     """
-    # Moving averages ki calculation
-    df['SMA_20'] = df['Close'].rolling(window=20).mean()
-    df['SMA_50'] = df['Close'].rolling(window=50).mean()
-    
+    if short_period >= long_period:
+        st.error("Short Period, Long Period se chhota hona chahiye.")
+        return None, None, None, None
+
+    # Disparity Index aur uske EMAs ki calculation (Pine Script formula ke hisaab se)
+    df['EMA_Length'] = df['Close'].ewm(span=length, adjust=False).mean()
+    df['DI'] = ((df['Close'] - df['EMA_Length']) / df['EMA_Length']) * 100
+    df['hsp_short'] = df['DI'].ewm(span=short_period, adjust=False).mean()
+    df['hsp_long'] = df['DI'].ewm(span=long_period, adjust=False).mean()
+
     # Buy aur Sell signals generate karna
     df['Signal'] = 0.0 # 0 = koi signal nahi
-    df['Signal'][20:] = df['SMA_20'][20:] > df['SMA_50'][20:]
+    df['Signal'][long_period:] = df['hsp_short'][long_period:] > df['hsp_long'][long_period:]
     df['Positions'] = df['Signal'].diff()
     
     initial_capital = 100000 # Shuruaati nivesh
     positions = 0
     portfolio_value = initial_capital
     trade_log = []
+    buy_date = None
+    buy_price = 0
 
     # Daily data par loop karke trades simulate karna
     for i in range(len(df)):
         current_date = df.index[i].strftime('%Y-%m-%d')
         
-        # Buy signal - jab SMA_20, SMA_50 se upar jaata hai
+        # Buy signal - jab hsp_short, hsp_long se upar jaata hai
         if df['Positions'].iloc[i] == 1.0:
             if positions == 0:
                 buy_price = df['Close'].iloc[i]
+                buy_date = current_date
                 shares = initial_capital / buy_price # Saare paiso se shares kharidna
                 positions = shares
                 st.write(f"💼 **Buy Signal:** {current_date} par {shares:.2f} shares kharidein @ {buy_price:.2f}")
                 
-        # Sell signal - jab SMA_20, SMA_50 se niche jaata hai
+        # Sell signal - jab hsp_short, hsp_long se niche jaata hai
         elif df['Positions'].iloc[i] == -1.0:
             if positions > 0:
                 sell_price = df['Close'].iloc[i]
@@ -87,11 +102,12 @@ def run_backtest(df):
     # Aakhiri portfolio value calculate karna
     if positions > 0:
         final_value = df['Close'].iloc[-1] * positions
-        portfolio_value += (final_value - (initial_capital - initial_capital))
-    
+        profit_loss = (final_value - initial_capital)
+        portfolio_value = initial_capital + profit_loss
+        
     total_return = (portfolio_value - initial_capital) / initial_capital * 100
     
-    return total_return, trade_log
+    return total_return, trade_log, initial_capital, portfolio_value
 
 # --- Main app logic ---
 if run_button:
@@ -108,27 +124,27 @@ if run_button:
                 st.success("Data download safal raha!")
                 
                 # Candlestick chart dikhane ke liye
-                st.subheader("Price Chart")
-                st.line_chart(data[['Close', 'SMA_20', 'SMA_50']])
+                st.subheader("Price Chart aur Disparity Index")
+                # Disparity Index lines alag se plot karna behtar hai, kyunki scale alag hota hai
+                st.line_chart(data[['Close']])
+                st.line_chart(data[['hsp_short', 'hsp_long']])
                 
                 st.subheader("Backtest Results")
-                total_return, trade_log = run_backtest(data)
+                total_return, trade_log, initial_capital, final_portfolio_value = run_backtest(data, length, short_period, long_period)
                 
-                # Results display karna
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Total Return", f"{total_return:.2f}%")
-                col2.metric("Total Trades", len(trade_log))
-                
-                if trade_log:
-                    trades_df = pd.DataFrame(trade_log)
-                    winning_trades = trades_df[trades_df['profit_loss'] > 0]
-                    col3.metric("Winning Trades", len(winning_trades))
-                
-                st.subheader("Trade History")
-                if trade_log:
-                    st.dataframe(pd.DataFrame(trade_log))
-                else:
-                    st.write("Is strategy ke liye koi trade nahi mila.")
+                if total_return is not None:
+                    # Results display karna
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Initial Capital", f"₹{initial_capital:.2f}")
+                    col2.metric("Final Portfolio Value", f"₹{final_portfolio_value:.2f}")
+                    col3.metric("Total Return", f"{total_return:.2f}%")
+                    col4.metric("Total Trades", len(trade_log))
+
+                    if trade_log:
+                        st.subheader("Trade History")
+                        trades_df = pd.DataFrame(trade_log)
+                        st.dataframe(trades_df)
+                    else:
+                        st.write("Is strategy ke liye koi trade nahi mila.")
             else:
                 st.error("Diye gaye symbol ke liye data nahi mil paya. Kripya symbol check karein ya thodi der baad koshish karein.")
-
