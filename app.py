@@ -15,7 +15,7 @@ st.write("In this tool, you can download 3 years of historical data for any stoc
 col_input, col_params = st.columns(2)
 with col_input:
     # Example symbols for Nifty and Bank Nifty
-    stock_symbol = st.text_input("Stock/Index Symbol (Append '.NS' for NSE stocks, use '^NSEI' for Nifty 50, and '^NSEBANK' for Bank Nifty)", "RELIANCE.NS")
+    stock_symbol = st.text_input("Stock/Index Symbol (e.g., RELIANCE.NS, ^NSEI, ^NSEBANK)", "RELIANCE.NS")
 
 with col_params:
     st.subheader("Disparity Index Parameters")
@@ -193,6 +193,6 @@ if run_button:
                         else:
                             st.write("No trades were found for this strategy.")
                 else:
-                    st.error("Could not find data for the given symbol. Please check the symbol or try again later.")
+                    st.error("Could not find enough data for the given symbol to run the backtest. Please check the symbol or try again later.")
             else:
                 st.error("Could not find data for the given symbol. Please check the symbol or try again later.")
