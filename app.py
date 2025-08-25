@@ -40,7 +40,17 @@ def get_historical_data(symbol, start_date, end_date):
         st.error(f"Data download karte samay error hua: {e}. Kripya sahi symbol check karein.")
         return None
 
-def run_backtest(df, length, short_period, long_period):
+def calculate_disparity_index(df, length, short_period, long_period):
+    """
+    Pine Script formula ke hisaab se Disparity Index aur uske EMAs ki calculation karta hai.
+    """
+    df['EMA_Length'] = df['Close'].ewm(span=length, adjust=False).mean()
+    df['DI'] = ((df['Close'] - df['EMA_Length']) / df['EMA_Length']) * 100
+    df['hsp_short'] = df['DI'].ewm(span=short_period, adjust=False).mean()
+    df['hsp_long'] = df['DI'].ewm(span=long_period, adjust=False).mean()
+    return df
+
+def run_backtest(df, short_period, long_period):
     """
     Disparity Index strategy ke basis par backtest chalaata hai.
     hsp_short > hsp_long = Buy signal.
@@ -49,12 +59,6 @@ def run_backtest(df, length, short_period, long_period):
     if short_period >= long_period:
         st.error("Short Period, Long Period se chhota hona chahiye.")
         return None, None, None, None
-
-    # Disparity Index aur uske EMAs ki calculation (Pine Script formula ke hisaab se)
-    df['EMA_Length'] = df['Close'].ewm(span=length, adjust=False).mean()
-    df['DI'] = ((df['Close'] - df['EMA_Length']) / df['EMA_Length']) * 100
-    df['hsp_short'] = df['DI'].ewm(span=short_period, adjust=False).mean()
-    df['hsp_long'] = df['DI'].ewm(span=long_period, adjust=False).mean()
 
     # Buy aur Sell signals generate karna
     df['Signal'] = 0.0 # 0 = koi signal nahi
@@ -121,6 +125,9 @@ if run_button:
             data = get_historical_data(stock_symbol, start_date, end_date)
             
             if data is not None and not data.empty:
+                # Disparity Index ki calculation data download hone ke baad karein
+                data = calculate_disparity_index(data, length, short_period, long_period)
+
                 st.success("Data download safal raha!")
                 
                 # Candlestick chart dikhane ke liye
@@ -130,7 +137,7 @@ if run_button:
                 st.line_chart(data[['hsp_short', 'hsp_long']])
                 
                 st.subheader("Backtest Results")
-                total_return, trade_log, initial_capital, final_portfolio_value = run_backtest(data, length, short_period, long_period)
+                total_return, trade_log, initial_capital, final_portfolio_value = run_backtest(data, short_period, long_period)
                 
                 if total_return is not None:
                     # Results display karna
