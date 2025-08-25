@@ -1,100 +1,131 @@
-# app.py
-# Streamlit Multi‑Timeframe Disparity Index Dashboard
-# Symbols: NIFTY 50 (^NSEI) & NIFTY BANK (^NSEBANK)
-# Features: DI(6/9/20), DI(9 vs 20) crossover signals, buy/sell markers, IST timestamps,
-#           per‑timeframe summary, cached fetch with retries, CSV export
-
-import time
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
-
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
+import pandas as pd
 import yfinance as yf
+import numpy as np
+from datetime import datetime, timedelta
+import pytz
 
-# ---------------------------
-# Config
-# ---------------------------
-st.set_page_config(page_title="Multi‑TF DI Dashboard (NIFTY/BANKNIFTY)", layout="wide")
+# --- Page Config ---
+st.set_page_config(page_title="DI Backtest - Nifty & BankNifty", layout="wide")
+st.title("📊 Disparity Index Backtest (Length=6, Short=9, Long=20)")
+st.caption("Data: Last 3 years | Capital: ₹100,000 | Timestamps in IST")
 
-SYMBOLS = [
-    {"code": "^NSEI", "name": "NIFTY 50"},
-    {"code": "^NSEBANK", "name": "NIFTY BANK"},
-]
+# --- Symbols ---
+symbols = {
+    "NIFTY": "^NSEI",
+    "BANKNIFTY": "^NSEBANK"
+}
 
-TIMEFRAMES = [
-    ("5 Min", "5m", "60d"),
-    ("15 Min", "15m", "60d"),
-    ("1 Hour", "60m", "60d"),
-    ("Daily", "1d", "3y"),
-    ("Weekly", "1wk", "10y"),
-]
+IST = pytz.timezone('Asia/Kolkata')
 
-IST = ZoneInfo("Asia/Kolkata")
+# --- Data Fetch ---
+@st.cache_data
+def fetch_data(symbol):
+    end = datetime.now()
+    start = end - timedelta(days=3 * 365)
+    df = yf.download(symbol, start=start, end=end)
 
-# ---------------------------
-# Utils
-# ---------------------------
-def to_ist_index(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    idx = df.index
-    if isinstance(idx, pd.DatetimeIndex):
-        if idx.tz is None:
-            # Yahoo often returns UTC-naive; assume UTC then convert
-            df.index = idx.tz_localize(timezone.utc).tz_convert(IST)
-        else:
-            df.index = idx.tz_convert(IST)
-    df = df[~df.index.duplicated(keep="last")]
+    # Flatten if MultiIndex columns
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = [col[0] for col in df.columns]
+
+    df.dropna(inplace=True)
+    df.index = df.index.tz_localize('UTC').tz_convert(IST)
     return df
 
-def safe_number(x, nd=2):
-    try:
-        return round(float(x), nd)
-    except Exception:
-        return x
-
-# ---------------------------
-# Data fetch with cache + retries
-# ---------------------------
-@st.cache_data(show_spinner=False, ttl=60)
-def fetch_yahoo(symbol: str, interval: str, period: str) -> pd.DataFrame:
-    last_err = None
-    for attempt in range(1, 4):
-        try:
-            df = yf.download(
-                symbol, period=period, interval=interval, auto_adjust=False, progress=False
-            )
-            if isinstance(df, pd.DataFrame) and not df.empty:
-                df = df.dropna(how="all")
-                df = to_ist_index(df)
-                return df
-        except Exception as e:
-            last_err = e
-        time.sleep(0.6 * attempt)  # simple backoff
-    # Return empty DF with expected columns on failure
-    cols = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
-    return pd.DataFrame(columns=cols)
-
-# ---------------------------
-# Indicators & signals
-# ---------------------------
-def add_di(df: pd.DataFrame, lengths=(6, 9, 20)) -> pd.DataFrame:
-    df = df.copy()
-    for n in lengths:
-        ema = df["Close"].ewm(span=n, adjust=False).mean()
-        df[f"EMA_{n}"] = ema
-        df[f"DI_{n}"] = (df["Close"] / ema) * 100
+# --- DI Calculation ---
+def calculate_DI(df, length, short, long):
+    close_series = df['Close'].astype(float)
+    ema_series = close_series.ewm(span=length, adjust=False).mean()
+    df['EMA'] = ema_series
+    df['DI'] = ((close_series - ema_series) / ema_series) * 100
+    df['DI_short'] = df['DI'].ewm(span=short, adjust=False).mean()
+    df['DI_long'] = df['DI'].ewm(span=long, adjust=False).mean()
+    df.dropna(inplace=True)
     return df
 
-def add_signals(df: pd.DataFrame, fast=9, slow=20) -> pd.DataFrame:
-    df = df.copy()
-    a, b = f"DI_{fast}", f"DI_{slow}"
-    df["Signal"] = "HOLD"
+# --- Backtest Logic ---
+def run_backtest(df):
+    df['Signal'] = np.where(df['DI_short'] > df['DI_long'], 1.0, 0.0)
+    df['Position'] = df['Signal'].diff()
 
+    capital = 100000
+    position = 0
+    entry_price = None
+    trade_log = []
+    portfolio = capital
+    history = []
+
+    for i in range(len(df)):
+        current_date = df.index[i]
+        price = df['Close'].iloc[i]
+
+        # Entry
+        if df['Position'].iloc[i] == 1.0 and position == 0:
+            entry_price = price
+            entry_date = current_date
+            shares = capital / price
+            position = shares
+
+        # Exit
+        elif df['Position'].iloc[i] == -1.0 and position > 0:
+            exit_price = price
+            exit_date = current_date
+            pnl = (exit_price - entry_price) * position
+            portfolio += pnl
+            trade_log.append({
+                "Buy Date": entry_date.strftime('%Y-%m-%d %H:%M:%S'),
+                "Buy Price": entry_price,
+                "Sell Date": exit_date.strftime('%Y-%m-%d %H:%M:%S'),
+                "Sell Price": exit_price,
+                "PnL": pnl
+            })
+            position = 0
+
+        current_value = price * position if position > 0 else portfolio
+        history.append(current_value)
+
+    final_value = price * position if position > 0 else portfolio
+    total_return = (final_value - capital) / capital * 100
+    drawdown = pd.Series(history).cummax() - pd.Series(history)
+    max_dd = (drawdown.max() / pd.Series(history).cummax().max()) * 100
+
+    wins = len([t for t in trade_log if t['PnL'] > 0])
+    losses = len([t for t in trade_log if t['PnL'] < 0])
+
+    return total_return, final_value, max_dd, wins, losses, pd.DataFrame(trade_log)
+
+# --- Main ---
+for label, symbol in symbols.items():
+    st.subheader(f"📈 {label} ({symbol})")
+    df = fetch_data(symbol)
+    df = calculate_DI(df, length=6, short=9, long=20)
+
+    st.line_chart(df[['Close']])
+    st.line_chart(df[['DI_short', 'DI_long']])
+
+    total_return, final_value, max_dd, wins, losses, log_df = run_backtest(df)
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Initial Capital", "₹100000")
+    col2.metric("Final Value", f"₹{final_value:,.2f}")
+    col3.metric("Total Return", f"{total_return:.2f}%")
+    col4.metric("Max Drawdown", f"{max_dd:.2f}%")
+
+    col5, col6 = st.columns(2)
+    col5.metric("Winning Trades", wins)
+    col6.metric("Losing Trades", losses)
+
+    st.subheader("📜 Trade Log")
+    st.dataframe(log_df)
+
+    csv = log_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        f"Download {label} Trade Log",
+        data=csv,
+        file_name=f"{label}_trade_log.csv",
+        mime="text/csv"
+    )
     cross_up = (df[a].shift(1) <= df[b].shift(1)) & (df[a] > df[b])
     cross_dn = (df[a].shift(1) >= df[b].shift(1)) & (df[a] < df[b])
 
