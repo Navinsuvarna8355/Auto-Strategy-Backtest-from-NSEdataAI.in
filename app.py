@@ -1,100 +1,110 @@
 # app.py
-# Import necessary libraries for Streamlit, data handling, and finance
 import streamlit as st
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 import numpy as np
 
-# --- App UI and Setup ---
-st.set_page_config(page_title="Share Market Backtest Tool", layout="wide")
-st.title("💰 Automatic Share Market Backtest Tool")
-st.write("In this tool, you can download 3 years of historical data for any stock or index, like Nifty 50, and backtest it using the 'Disparity Index' strategy.")
+# --- UI Setup ---
+st.set_page_config(page_title="Nifty & BankNifty Backtest", layout="wide")
+st.title("📊 Disparity Index Backtest: Nifty & BankNifty")
+st.caption("Backtest using DI settings: Length=6, Short=9, Long=20 | 3-Year Data")
 
-# User inputs for stock symbol and strategy parameters
-col_input, col_params = st.columns(2)
-with col_input:
-    # Example symbols for Nifty and Bank Nifty
-    stock_symbol = st.text_input("Stock/Index Symbol (e.g., RELIANCE.NS, ^NSEI, ^NSEBANK)", "RELIANCE.NS")
+symbols = {
+    "NIFTY": "^NSEI",
+    "BANKNIFTY": "^NSEBANK"
+}
 
-with col_params:
-    st.subheader("Disparity Index Parameters")
-    length = st.number_input("Length (L)", min_value=1, value=29)
-    short_period = st.number_input("Short Period", min_value=1, value=27)
-    long_period = st.number_input("Long Period", min_value=1, value=81)
-
-# Button to start the backtest
-run_button = st.button("Run Backtest")
-
-# --- Functions for Data and Backtest Logic ---
-
+# --- Functions ---
 @st.cache_data
-def get_historical_data(symbol, start_date, end_date):
-    """
-    Downloads historical stock data from Yahoo Finance.
-    """
-    try:
-        data = yf.download(symbol, start=start_date, end=end_date)
-        if data.empty:
-            return None
-        return data
-    except Exception as e:
-        st.error(f"An error occurred while downloading data: {e}. Please check the symbol.")
-        return None
-
-def calculate_disparity_index(df, length, short_period, long_period):
-    """
-    Calculates the Disparity Index and its EMAs based on the Pine Script formula.
-    """
-    # Calculate EMA, which will generate NaN values at the beginning
-    df['EMA_Length'] = df['Close'].ewm(span=length, adjust=False).mean()
-
-    # Data validation: drop rows with NaN values immediately after EMA calculation
-    # This ensures that DI calculation doesn't fail on NaN values
+def fetch_data(symbol):
+    end = datetime.now()
+    start = end - timedelta(days=3*365)
+    df = yf.download(symbol, start=start, end=end)
     df.dropna(inplace=True)
-    
-    if df.empty:
-        return pd.DataFrame() # Return an empty DataFrame if all values are NaN
-    
-    # Calculate DI
-    df['DI'] = ((df['Close'] - df['EMA_Length']) / df['EMA_Length']) * 100
-    
-    # Calculate DI's EMAs
-    df['hsp_short'] = df['DI'].ewm(span=short_period, adjust=False).mean()
-    df['hsp_long'] = df['DI'].ewm(span=long_period, adjust=False).mean()
-    
-    # Drop any remaining NaN values after DI's EMAs are calculated
-    df.dropna(inplace=True)
-    
     return df
 
-def run_backtest(df, short_period, long_period):
-    """
-    Runs the backtest based on the Disparity Index strategy.
-    hsp_short > hsp_long = Buy signal.
-    hsp_short < hsp_long = Sell signal.
-    """
-    if short_period >= long_period:
-        st.error("Short Period must be smaller than Long Period.")
-        return None, None, None, None, None, None, None
+def calculate_DI(df, length, short, long):
+    df['EMA'] = df['Close'].ewm(span=length, adjust=False).mean()
+    df.dropna(inplace=True)
+    df['DI'] = ((df['Close'] - df['EMA']) / df['EMA']) * 100
+    df['DI_short'] = df['DI'].ewm(span=short, adjust=False).mean()
+    df['DI_long'] = df['DI'].ewm(span=long, adjust=False).mean()
+    df.dropna(inplace=True)
+    return df
 
-    # Generate Buy and Sell signals
-    df['Signal'] = np.where(df['hsp_short'] > df['hsp_long'], 1.0, 0.0)
-    df['Positions'] = df['Signal'].diff()
-    
-    initial_capital = 100000 # Starting investment
-    positions = 0
-    portfolio_value = initial_capital
+def run_backtest(df):
+    df['Signal'] = np.where(df['DI_short'] > df['DI_long'], 1.0, 0.0)
+    df['Position'] = df['Signal'].diff()
+
+    capital = 100000
+    position = 0
     trade_log = []
-    
-    # Track portfolio values over time for calculating drawdown
-    portfolio_history = []
-    
-    buy_date = None
-    buy_price = 0.0
+    portfolio = capital
+    history = []
 
-    # Loop through the daily data to simulate trades
     for i in range(len(df)):
+        date = df.index[i]
+        price = df['Close'].iloc[i]
+
+        if df['Position'].iloc[i] == 1.0 and position == 0:
+            entry_price = price
+            entry_date = date
+            shares = capital / price
+            position = shares
+
+        elif df['Position'].iloc[i] == -1.0 and position > 0:
+            exit_price = price
+            exit_date = date
+            pnl = (exit_price - entry_price) * position
+            portfolio += pnl
+            trade_log.append({
+                "Buy Date": entry_date.strftime('%Y-%m-%d'),
+                "Buy Price": entry_price,
+                "Sell Date": exit_date.strftime('%Y-%m-%d'),
+                "Sell Price": exit_price,
+                "PnL": pnl
+            })
+            position = 0
+
+        current_value = price * position if position > 0 else portfolio
+        history.append(current_value)
+
+    final_value = price * position if position > 0 else portfolio
+    total_return = (final_value - capital) / capital * 100
+    drawdown = pd.Series(history).cummax() - pd.Series(history)
+    max_dd = drawdown.max() / pd.Series(history).cummax().max() * 100
+
+    wins = len([t for t in trade_log if t['PnL'] > 0])
+    losses = len([t for t in trade_log if t['PnL'] < 0])
+
+    return total_return, final_value, max_dd, wins, losses, pd.DataFrame(trade_log)
+
+# --- Main App ---
+for label, symbol in symbols.items():
+    st.subheader(f"📈 {label} ({symbol})")
+    df = fetch_data(symbol)
+    df = calculate_DI(df, length=6, short=9, long=20)
+    st.line_chart(df[['Close']])
+    st.line_chart(df[['DI_short', 'DI_long']])
+
+    total_return, final_value, max_dd, wins, losses, log_df = run_backtest(df)
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Initial Capital", "₹100000")
+    col2.metric("Final Value", f"₹{final_value:.2f}")
+    col3.metric("Total Return", f"{total_return:.2f}%")
+    col4.metric("Max Drawdown", f"{max_dd:.2f}%")
+
+    col5, col6 = st.columns(2)
+    col5.metric("Winning Trades", wins)
+    col6.metric("Losing Trades", losses)
+
+    st.subheader("📜 Trade Log")
+    st.dataframe(log_df)
+
+    csv = log_df.to_csv(index=False).encode('utf-8')
+    st.download_button(f"Download {label} Trade Log", data=csv, file_name=f"{label}_trade_log.csv", mime="text/csv")
         current_date = df.index[i]
         
         # Buy signal - when hsp_short crosses above hsp_long
