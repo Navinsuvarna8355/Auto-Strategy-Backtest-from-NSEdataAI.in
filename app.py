@@ -189,7 +189,6 @@ with col1:
 with col2:
     st.plotly_chart(fig_banknifty, use_container_width=True)
 
-
 # --- Logs Display ---
 st.markdown("---")
 if "trade_logs" in st.session_state and st.session_state.trade_logs:
@@ -197,7 +196,3 @@ if "trade_logs" in st.session_state and st.session_state.trade_logs:
     st.dataframe(daily_df, use_container_width=True)
 else:
     st.info("📭 No trades logged yet. Toggle strategy ON to begin auto-trading.")
-
----
-The video [Sidebar & Graphs In Streamlit | Complete Streamlit Python Course | Streamlit Tutorial 14](https://www.youtube.com/watch?v=cUKqsnLGQBw) explains how to embed charts and create sidebars in a Streamlit app.
-http://googleusercontent.com/youtube_content/0
