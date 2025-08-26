@@ -1,74 +1,64 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from datetime import datetime
-import pytz
+import matplotlib.pyplot as plt
 
-# --- Strategy Logic ---
-def calculate_disparity_index(df, length, short_prd, long_prd):
-    ma = df['close'].rolling(length).mean()
-    di = ((df['close'] - ma) / ma) * 100
-    df['DI'] = di
-    df['hsp_short'] = di.rolling(short_prd).mean()
-    df['hsp_long'] = di.rolling(long_prd).mean()
+# Page setup
+st.set_page_config(page_title="BTC Disparity Dashboard", layout="wide")
+st.title("📊 BTC Strategy Dashboard")
+
+# Sidebar: Manual strategy input
+st.sidebar.header("⚙️ Strategy Settings")
+param_input = st.sidebar.text_input(
+    "Type settings like: MA=14, Short=5, Long=20",
+    value="MA=14, Short=5, Long=20"
+)
+
+# Parse input safely
+try:
+    parts = param_input.replace(" ", "").split(",")
+    param_dict = {k.split("=")[0].lower(): int(k.split("=")[1]) for k in parts}
+    ma_length = param_dict.get("ma", 14)
+    short_prd = param_dict.get("short", 5)
+    long_prd = param_dict.get("long", 20)
+except Exception as e:
+    st.error(f"❌ Invalid format: {e}")
+    st.stop()
+
+# Display parsed values
+st.subheader("🔍 Parsed Strategy Settings")
+col1, col2, col3 = st.columns(3)
+col1.metric("Disparity MA Length", ma_length)
+col2.metric("Short Period", short_prd)
+col3.metric("Long Period", long_prd)
+
+# Load BTC data (replace with live feed or your CSV)
+@st.cache_data
+def load_data():
+    # Replace this with your actual BTC data source
+    df = pd.read_csv("btc_data.csv")  # Must contain 'Date' and 'Close'
+    df['Date'] = pd.to_datetime(df['Date'])
     return df
 
-def generate_trading_signals(disparity_results: pd.DataFrame):
-    signals = pd.DataFrame(index=disparity_results.index)
-    signals['signal'] = 0.0
-    signals.loc[disparity_results['hsp_short'] > disparity_results['hsp_long'], 'signal'] = 1.0
-    signals.loc[disparity_results['hsp_short'] < disparity_results['hsp_long'], 'signal'] = -1.0
-    signals['entry'] = signals['signal'].diff()
-    entry_signals = signals.loc[signals['entry'] != 0].copy()
-    latest_signal = signals.iloc[-1]
-    return entry_signals, latest_signal
+df = load_data()
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="Disparity Index Strategy", layout="wide")
-st.title("📊 Disparity Index Crossover Strategy")
+# Calculate Disparity Index
+df['MA'] = df['Close'].rolling(window=ma_length).mean()
+df['Disparity'] = (df['Close'] - df['MA']) / df['MA'] * 100
 
-with st.sidebar:
-    st.header("⚙️ Strategy Settings")
-    length = st.slider("Disparity MA Length", 5, 50, 14)
-    short_prd = st.slider("Short Period", 2, 20, 5)
-    long_prd = st.slider("Long Period", 5, 50, 20)
+# Plot chart with 2 lines
+st.subheader("📈 Disparity Index Chart")
+fig, ax = plt.subplots(figsize=(10, 4))
+ax.plot(df['Date'], df['Close'], label='BTC Close Price', color='green')
+ax.plot(df['Date'], df['Disparity'], label='Disparity Index (%)', color='blue')
+ax.set_title("Disparity Index Optimized for BTC")
+ax.set_xlabel("Date")
+ax.set_ylabel("Value")
+ax.legend()
+ax.grid(True)
+st.pyplot(fig)
 
-    st.header("📥 Data Input Mode")
-    input_mode = st.radio("Choose input mode:", ["Auto-generate", "Manual"])
-
-# --- Data Input ---
-if input_mode == "Manual":
-    st.sidebar.write("Enter comma-separated close prices:")
-    manual_input = st.sidebar.text_area("Close Prices", "17500,17510,17520,17515,17530")
-    try:
-        close_prices = [float(p.strip()) for p in manual_input.split(",") if p.strip()]
-        timestamps = pd.date_range(end=datetime.now(pytz.timezone('Asia/Kolkata')), periods=len(close_prices), freq='5min')
-        df = pd.DataFrame({'close': close_prices}, index=timestamps)
-    except Exception as e:
-        st.error(f"Invalid input: {e}")
-        st.stop()
-else:
-    np.random.seed(42)
-    now = datetime.now(pytz.timezone('Asia/Kolkata'))
-    dates = pd.date_range(end=now, periods=100, freq='5min')
-    prices = np.cumsum(np.random.randn(len(dates))) + 17500
-    df = pd.DataFrame({'close': prices}, index=dates)
-
-# --- Strategy Execution ---
-df = calculate_disparity_index(df, length, short_prd, long_prd)
-entry_signals, latest_signal = generate_trading_signals(df)
-
-# --- Display ---
-st.subheader("📈 Latest Signal")
-signal_text = "BUY" if latest_signal['signal'] == 1.0 else "SELL" if latest_signal['signal'] == -1.0 else "HOLD"
-st.metric("Signal", signal_text)
-
-st.subheader("📋 Entry Signals")
-st.dataframe(entry_signals.tail(10))
-
-st.subheader("📉 Disparity Index Chart")
-st.line_chart(df[['DI', 'hsp_short', 'hsp_long']])
-
-# --- CSV Export ---
-csv = entry_signals.to_csv().encode('utf-8')
-st.download_button("📥 Download Entry Signals CSV", data=csv, file_name="entry_signals.csv", mime="text/csv")
+# Strategy signal (basic logic)
+st.markdown("---")
+if st.button("Run Strategy"):
+    signal = "BUY" if short_prd > long_prd else "SELL"
+    st.success(f"Signal: **{signal}** | MA={ma_length}, Short={short_prd}, Long={long_prd}")
