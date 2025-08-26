@@ -66,7 +66,6 @@ def generate_sample_data():
     num_periods = int(time_diff.total_seconds() / 300)
     
     dates = pd.date_range(start=start_time, periods=num_periods, freq='5min')
-    
     prices = 27500 + np.cumsum(np.random.randn(num_periods) * 50)
     
     # Create OHLC data
@@ -82,12 +81,15 @@ df = generate_sample_data()
 df['MA'] = df['Close'].rolling(window=st.session_state.ma_length).mean()
 df['Disparity'] = (df['Close'] - df['MA']) / df['MA'] * 100
 df.dropna(inplace=True)
+df['Disparity_MA'] = df['Disparity'].rolling(window=st.session_state.short_prd).mean()
 
 # --- Signal Logic ---
-def get_trade_signal(disparity, threshold):
-    if disparity > threshold:
+def get_trade_signal(disparity, disparity_ma):
+    # Buy PE: Disparity line crosses ABOVE its MA
+    if disparity > disparity_ma and df.shift(1)['Disparity'].iloc[-1] < df.shift(1)['Disparity_MA'].iloc[-1]:
         return "Buy PE"
-    elif disparity < -threshold:
+    # Buy CE: Disparity line crosses BELOW its MA
+    elif disparity < disparity_ma and df.shift(1)['Disparity'].iloc[-1] > df.shift(1)['Disparity_MA'].iloc[-1]:
         return "Buy CE"
     return None
 
@@ -112,31 +114,28 @@ col2.metric("Short Period", st.session_state.short_prd)
 col3.metric("Long Period", st.session_state.long_prd)
 
 # --- Interactive Plotly Candlestick Chart ---
-st.subheader("📈 Interactive Candlestick Chart with Signals")
+st.subheader("📈 Disparity Index Chart with Crossover Signals")
 
-# Initialize the figure with a candlestick trace
-fig = go.Figure(data=[go.Candlestick(x=df['Date'],
-                open=df['Open'],
-                high=df['High'],
-                low=df['Low'],
-                close=df['Close'])])
-
-# Add the MA line
-fig.add_trace(go.Scatter(x=df['Date'], y=df['MA'], name='Moving Average', line=dict(color='orange', width=2)))
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df['Date'], y=df['Disparity'], name='Disparity Index', line=dict(color='blue', width=2)))
+fig.add_trace(go.Scatter(x=df['Date'], y=df['Disparity_MA'], name='Disparity MA', line=dict(color='green', width=2)))
 
 # Backtest button
 if st.button("▶️ Run Backtest"):
     st.session_state.trade_logs = []
     buy_ce_signals = []
     buy_pe_signals = []
-    for index, row in df.iterrows():
-        signal = get_trade_signal(row['Disparity'], st.session_state.threshold)
-        if signal == "Buy CE":
-            log_trade(signal, row['Close'], row['Disparity'])
-            buy_ce_signals.append((row['Date'], row['Low'] - 100))
-        elif signal == "Buy PE":
-            log_trade(signal, row['Close'], row['Disparity'])
-            buy_pe_signals.append((row['Date'], row['High'] + 100))
+    for i in range(1, len(df)):
+        current_row = df.iloc[i]
+        prev_row = df.iloc[i-1]
+        
+        # Check for crossover
+        if (prev_row['Disparity'] < prev_row['Disparity_MA'] and current_row['Disparity'] > current_row['Disparity_MA']):
+            log_trade("Buy PE", current_row['Close'], current_row['Disparity'])
+            buy_pe_signals.append((current_row['Date'], current_row['Disparity']))
+        elif (prev_row['Disparity'] > prev_row['Disparity_MA'] and current_row['Disparity'] < current_row['Disparity_MA']):
+            log_trade("Buy CE", current_row['Close'], current_row['Disparity'])
+            buy_ce_signals.append((current_row['Date'], current_row['Disparity']))
 
     # Add Buy CE signals to the chart
     if buy_ce_signals:
@@ -160,7 +159,7 @@ if st.button("▶️ Run Backtest"):
             text=["Buy PE"] * len(buy_pe_signals)
         ))
     
-    st.success("Backtest completed! Signals are plotted on the chart.")
+    st.success("Backtest completed! Crossover signals are plotted on the chart.")
 
 st.plotly_chart(fig, use_container_width=True)
 
