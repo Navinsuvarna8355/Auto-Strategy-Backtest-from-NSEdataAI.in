@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, time, timedelta
+from datetime import datetime
 import pytz
 import plotly.graph_objects as go
 import json
@@ -60,25 +60,16 @@ if st.sidebar.button("💾 Save Settings"):
 # --- Sample BTC Data ---
 def generate_sample_data():
     np.random.seed(42)
-    
-    # Define the start and end times for the trading day, including pre-market
     start_time = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
     end_time = datetime.now().replace(hour=15, minute=30, second=0, microsecond=0)
-    
-    # Generate data points every 5 minutes within this range
     time_diff = end_time - start_time
-    num_periods = int(time_diff.total_seconds() / 300) # 300 seconds = 5 minutes
+    num_periods = int(time_diff.total_seconds() / 300)
     dates = pd.date_range(start=start_time, periods=num_periods, freq='5min')
-    
-    # Generate prices with volatility and random jumps
-    initial_price = 27500
-    volatility = 50 
-    prices = initial_price + np.cumsum(np.random.randn(len(dates)) * volatility)
+    prices = 27500 + np.cumsum(np.random.randn(num_periods) * 50)
     for i in range(5):
         jump_idx = np.random.randint(10, num_periods - 10)
         jump_size = np.random.uniform(-500, 500)
         prices[jump_idx:] += jump_size
-        
     return pd.DataFrame({'Date': dates, 'Close': prices})
 
 df = generate_sample_data()
