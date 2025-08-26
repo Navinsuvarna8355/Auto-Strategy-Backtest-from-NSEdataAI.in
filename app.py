@@ -4,14 +4,39 @@ import numpy as np
 from datetime import datetime, time, timedelta
 import pytz
 import plotly.express as px
+import json
+import os
 
 # --- Page Setup ---
 st.set_page_config(page_title="BTC Auto Strategy", layout="wide")
 st.title("📊 BTC Strategy Dashboard")
 
-# --- Persistent Strategy Settings ---
+# --- Function to save settings ---
+def save_settings():
+    settings = {
+        "ma_length": st.session_state.ma_length,
+        "short_prd": st.session_state.short_prd,
+        "long_prd": st.session_state.long_prd,
+        "threshold": st.session_state.threshold
+    }
+    with open("settings.json", "w") as f:
+        json.dump(settings, f)
+    st.success("Settings saved successfully!")
+
+# --- Function to load settings ---
+def load_settings():
+    if os.path.exists("settings.json"):
+        with open("settings.json", "r") as f:
+            settings = json.load(f)
+        st.session_state.ma_length = settings["ma_length"]
+        st.session_state.short_prd = settings["short_prd"]
+        st.session_state.long_prd = settings["long_prd"]
+        st.session_state.threshold = settings["threshold"]
+
+# --- Persistent Strategy Settings (with load on startup) ---
 if "ma_length" not in st.session_state:
     st.session_state.ma_length = 20
+    load_settings() # Load settings only on initial run
 if "short_prd" not in st.session_state:
     st.session_state.short_prd = 3
 if "long_prd" not in st.session_state:
@@ -28,12 +53,16 @@ st.session_state.short_prd = st.sidebar.number_input("Short Period", min_value=1
 st.session_state.long_prd = st.sidebar.number_input("Long Period", min_value=1, max_value=50, value=st.session_state.long_prd)
 st.session_state.threshold = st.sidebar.slider("Signal Threshold (%)", min_value=0.5, max_value=5.0, value=st.session_state.threshold, step=0.1)
 
+# --- Save Settings Button ---
+if st.sidebar.button("💾 Save Settings"):
+    save_settings()
+
 # --- Sample BTC Data ---
 def generate_sample_data():
     np.random.seed(42)
     
-    # Define the start and end times for the trading day
-    start_time = datetime.now().replace(hour=9, minute=15, second=0, microsecond=0)
+    # Define the start and end times for the trading day, including pre-market
+    start_time = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
     end_time = datetime.now().replace(hour=15, minute=30, second=0, microsecond=0)
     
     # Generate data points every 5 minutes within this range
