@@ -31,7 +31,16 @@ st.session_state.threshold = st.sidebar.slider("Signal Threshold (%)", min_value
 def generate_sample_data():
     np.random.seed(42)
     dates = pd.date_range(end=datetime.now(), periods=100, freq='5min')
-    prices = np.cumsum(np.random.randn(len(dates))) + 27500
+    # Increased volatility factor and added random jumps for a more realistic chart
+    initial_price = 27500
+    volatility = 50 
+    prices = initial_price + np.cumsum(np.random.randn(len(dates)) * volatility)
+    # Adding some larger random jumps
+    for i in range(10):
+        jump_idx = np.random.randint(20, 80)
+        jump_size = np.random.uniform(-500, 500)
+        prices[jump_idx:] += jump_size
+    
     return pd.DataFrame({'Date': dates, 'Close': prices})
 
 df = generate_sample_data()
