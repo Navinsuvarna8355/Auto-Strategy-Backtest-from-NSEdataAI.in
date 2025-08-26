@@ -32,7 +32,6 @@ def load_settings(name):
     return None
 
 # --- Persistent Strategy Settings (with load on startup) ---
-# Nifty Settings
 nifty_settings = load_settings("nifty")
 if "nifty_ma_length" not in st.session_state:
     st.session_state.nifty_ma_length = nifty_settings["ma_length"] if nifty_settings else 20
@@ -43,7 +42,6 @@ if "nifty_long_prd" not in st.session_state:
 if "nifty_threshold" not in st.session_state:
     st.session_state.nifty_threshold = nifty_settings["threshold"] if nifty_settings else 1.5
 
-# BankNifty Settings
 banknifty_settings = load_settings("banknifty")
 if "banknifty_ma_length" not in st.session_state:
     st.session_state.banknifty_ma_length = banknifty_settings["ma_length"] if banknifty_settings else 20
@@ -69,7 +67,7 @@ def generate_sample_data(index_name):
     if index_name == 'Nifty':
         initial_price = 19500
         volatility = 20
-    else: # BankNifty
+    else:
         initial_price = 45000
         volatility = 50
         
@@ -103,67 +101,52 @@ def log_trade(signal, price, disparity, index_name):
         "Price": round(price, 2),
         "Disparity": round(disparity, 2)
     })
-
-# --- Nifty Section ---
-st.header("Nifty 📈")
+    
+# --- Create two columns for side-by-side display ---
 col1, col2 = st.columns(2)
+
 with col1:
+    st.header("Nifty 📈")
     st.subheader("⚙️ Nifty Settings")
     st.session_state.nifty_ma_length = st.number_input("Nifty MA Length", min_value=1, max_value=50, value=st.session_state.nifty_ma_length, key="nifty_ma_length_input")
     st.session_state.nifty_short_prd = st.number_input("Nifty Short Period", min_value=1, max_value=20, value=st.session_state.nifty_short_prd, key="nifty_short_prd_input")
     st.session_state.nifty_long_prd = st.number_input("Nifty Long Period", min_value=1, max_value=50, value=st.session_state.nifty_long_prd, key="nifty_long_prd_input")
     st.session_state.nifty_threshold = st.slider("Nifty Signal Threshold (%)", min_value=0.5, max_value=5.0, value=st.session_state.nifty_threshold, step=0.1, key="nifty_threshold_slider")
-    if st.button("💾 Save Nifty Settings"):
+    if st.button("💾 Save Nifty Settings", key="nifty_save_button"):
         save_settings(st.session_state.nifty_ma_length, st.session_state.nifty_short_prd, st.session_state.nifty_long_prd, st.session_state.nifty_threshold, "nifty")
 
+    df_nifty = generate_sample_data('Nifty')
+    df_nifty['MA'] = df_nifty['Close'].rolling(window=st.session_state.nifty_ma_length).mean()
+    df_nifty['Disparity'] = (df_nifty['Close'] - df_nifty['MA']) / df_nifty['MA'] * 100
+    df_nifty['Disparity_MA'] = df_nifty['Disparity'].rolling(window=st.session_state.nifty_short_prd).mean()
+    df_nifty.dropna(inplace=True)
+
+    fig_nifty = go.Figure()
+    fig_nifty.add_trace(go.Scatter(x=df_nifty['Date'], y=df_nifty['Disparity'], name='Disparity Index', line=dict(color='blue', width=2)))
+    fig_nifty.add_trace(go.Scatter(x=df_nifty['Date'], y=df_nifty['Disparity_MA'], name='Disparity MA', line=dict(color='green', width=2)))
+
 with col2:
-    st.subheader("🔍 Parsed Nifty Settings")
-    n_col1, n_col2, n_col3 = st.columns(3)
-    n_col1.metric("MA Length", st.session_state.nifty_ma_length)
-    n_col2.metric("Short Period", st.session_state.nifty_short_prd)
-    n_col3.metric("Long Period", st.session_state.nifty_long_prd)
-
-df_nifty = generate_sample_data('Nifty')
-df_nifty['MA'] = df_nifty['Close'].rolling(window=st.session_state.nifty_ma_length).mean()
-df_nifty['Disparity'] = (df_nifty['Close'] - df_nifty['MA']) / df_nifty['MA'] * 100
-df_nifty['Disparity_MA'] = df_nifty['Disparity'].rolling(window=st.session_state.nifty_short_prd).mean()
-df_nifty.dropna(inplace=True)
-
-fig_nifty = go.Figure()
-fig_nifty.add_trace(go.Scatter(x=df_nifty['Date'], y=df_nifty['Disparity'], name='Disparity Index', line=dict(color='blue', width=2)))
-fig_nifty.add_trace(go.Scatter(x=df_nifty['Date'], y=df_nifty['Disparity_MA'], name='Disparity MA', line=dict(color='green', width=2)))
-
-# --- BankNifty Section ---
-st.markdown("---")
-st.header("BankNifty 📈")
-col3, col4 = st.columns(2)
-with col3:
+    st.header("BankNifty 📈")
     st.subheader("⚙️ BankNifty Settings")
     st.session_state.banknifty_ma_length = st.number_input("BankNifty MA Length", min_value=1, max_value=50, value=st.session_state.banknifty_ma_length, key="banknifty_ma_length_input")
     st.session_state.banknifty_short_prd = st.number_input("BankNifty Short Period", min_value=1, max_value=20, value=st.session_state.banknifty_short_prd, key="banknifty_short_prd_input")
     st.session_state.banknifty_long_prd = st.number_input("BankNifty Long Period", min_value=1, max_value=50, value=st.session_state.banknifty_long_prd, key="banknifty_long_prd_input")
     st.session_state.banknifty_threshold = st.slider("BankNifty Signal Threshold (%)", min_value=0.5, max_value=5.0, value=st.session_state.banknifty_threshold, step=0.1, key="banknifty_threshold_slider")
-    if st.button("💾 Save BankNifty Settings"):
+    if st.button("💾 Save BankNifty Settings", key="banknifty_save_button"):
         save_settings(st.session_state.banknifty_ma_length, st.session_state.banknifty_short_prd, st.session_state.banknifty_long_prd, st.session_state.banknifty_threshold, "banknifty")
 
-with col4:
-    st.subheader("🔍 Parsed BankNifty Settings")
-    b_col1, b_col2, b_col3 = st.columns(3)
-    b_col1.metric("MA Length", st.session_state.banknifty_ma_length)
-    b_col2.metric("Short Period", st.session_state.banknifty_short_prd)
-    b_col3.metric("Long Period", st.session_state.banknifty_long_prd)
+    df_banknifty = generate_sample_data('BankNifty')
+    df_banknifty['MA'] = df_banknifty['Close'].rolling(window=st.session_state.banknifty_ma_length).mean()
+    df_banknifty['Disparity'] = (df_banknifty['Close'] - df_banknifty['MA']) / df_banknifty['MA'] * 100
+    df_banknifty['Disparity_MA'] = df_banknifty['Disparity'].rolling(window=st.session_state.banknifty_short_prd).mean()
+    df_banknifty.dropna(inplace=True)
 
-df_banknifty = generate_sample_data('BankNifty')
-df_banknifty['MA'] = df_banknifty['Close'].rolling(window=st.session_state.banknifty_ma_length).mean()
-df_banknifty['Disparity'] = (df_banknifty['Close'] - df_banknifty['MA']) / df_banknifty['MA'] * 100
-df_banknifty['Disparity_MA'] = df_banknifty['Disparity'].rolling(window=st.session_state.banknifty_short_prd).mean()
-df_banknifty.dropna(inplace=True)
-
-fig_banknifty = go.Figure()
-fig_banknifty.add_trace(go.Scatter(x=df_banknifty['Date'], y=df_banknifty['Disparity'], name='Disparity Index', line=dict(color='blue', width=2)))
-fig_banknifty.add_trace(go.Scatter(x=df_banknifty['Date'], y=df_banknifty['Disparity_MA'], name='Disparity MA', line=dict(color='green', width=2)))
+    fig_banknifty = go.Figure()
+    fig_banknifty.add_trace(go.Scatter(x=df_banknifty['Date'], y=df_banknifty['Disparity'], name='Disparity Index', line=dict(color='blue', width=2)))
+    fig_banknifty.add_trace(go.Scatter(x=df_banknifty['Date'], y=df_banknifty['Disparity_MA'], name='Disparity MA', line=dict(color='green', width=2)))
 
 # --- Auto Trading & Signal Logging ---
+st.markdown("---")
 auto_mode = st.toggle("🔄 Auto Strategy Mode", value=False)
 st.markdown("---")
 st.header("📊 Live Trade Logs")
@@ -201,12 +184,20 @@ else:
     st.info("🔄 Auto Strategy Mode is OFF. Turn it ON to start live trading.")
 
 # --- Display Charts ---
-st.plotly_chart(fig_nifty, use_container_width=True)
-st.plotly_chart(fig_banknifty, use_container_width=True)
+with col1:
+    st.plotly_chart(fig_nifty, use_container_width=True)
+with col2:
+    st.plotly_chart(fig_banknifty, use_container_width=True)
+
 
 # --- Logs Display ---
+st.markdown("---")
 if "trade_logs" in st.session_state and st.session_state.trade_logs:
     daily_df = pd.DataFrame(st.session_state.trade_logs)
     st.dataframe(daily_df, use_container_width=True)
 else:
     st.info("📭 No trades logged yet. Toggle strategy ON to begin auto-trading.")
+
+---
+The video [Sidebar & Graphs In Streamlit | Complete Streamlit Python Course | Streamlit Tutorial 14](https://www.youtube.com/watch?v=cUKqsnLGQBw) explains how to embed charts and create sidebars in a Streamlit app.
+http://googleusercontent.com/youtube_content/0
