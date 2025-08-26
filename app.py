@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, time, timedelta
+from datetime import datetime
 import pytz
 import plotly.graph_objects as go
 import json
@@ -9,7 +9,7 @@ import os
 
 # --- Page Setup ---
 st.set_page_config(page_title="BTC Auto Strategy", layout="wide")
-st.title("📊 BTC Strategy Dashboard")
+st.title("📊 BTC Strategy Dashboard (Monthly)")
 
 # --- Function to save settings ---
 def save_settings():
@@ -57,23 +57,21 @@ st.session_state.threshold = st.sidebar.slider("Signal Threshold (%)", min_value
 if st.sidebar.button("💾 Save Settings"):
     save_settings()
 
-# --- Sample BTC Data for Candlestick Chart ---
+# --- Sample BTC Data (Monthly) ---
 def generate_sample_data():
     np.random.seed(42)
-    start_time = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
-    end_time = datetime.now().replace(hour=15, minute=30, second=0, microsecond=0)
-    time_diff = end_time - start_time
-    num_periods = int(time_diff.total_seconds() / 300)
     
-    dates = pd.date_range(start=start_time, periods=num_periods, freq='5min')
-    prices = 27500 + np.cumsum(np.random.randn(num_periods) * 50)
+    # Generate data points for each month
+    dates = pd.date_range(end=datetime.now(), periods=100, freq='M')
+    
+    prices = 27500 + np.cumsum(np.random.randn(len(dates)) * 500) # Increased volatility for monthly data
     
     # Create OHLC data
     ohlc = pd.DataFrame(index=dates, columns=['Open', 'High', 'Low', 'Close'])
     ohlc['Open'] = prices
-    ohlc['Close'] = ohlc['Open'] + np.random.randn(num_periods) * 25
-    ohlc['High'] = ohlc[['Open', 'Close']].max(axis=1) + np.abs(np.random.randn(num_periods) * 10)
-    ohlc['Low'] = ohlc[['Open', 'Close']].min(axis=1) - np.abs(np.random.randn(num_periods) * 10)
+    ohlc['Close'] = ohlc['Open'] + np.random.randn(len(dates)) * 250
+    ohlc['High'] = ohlc[['Open', 'Close']].max(axis=1) + np.abs(np.random.randn(len(dates)) * 100)
+    ohlc['Low'] = ohlc[['Open', 'Close']].min(axis=1) - np.abs(np.random.randn(len(dates)) * 100)
     
     return ohlc.reset_index().rename(columns={'index': 'Date'})
 
@@ -113,8 +111,8 @@ col1.metric("MA Length", st.session_state.ma_length)
 col2.metric("Short Period", st.session_state.short_prd)
 col3.metric("Long Period", st.session_state.long_prd)
 
-# --- Interactive Plotly Candlestick Chart ---
-st.subheader("📈 Disparity Index Chart with Crossover Signals")
+# --- Interactive Plotly Chart ---
+st.subheader("📈 Disparity Index Chart with Crossover Signals (Monthly)")
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=df['Date'], y=df['Disparity'], name='Disparity Index', line=dict(color='blue', width=2)))
@@ -167,15 +165,11 @@ st.plotly_chart(fig, use_container_width=True)
 st.markdown("---")
 daily_df = pd.DataFrame(st.session_state.trade_logs)
 if not daily_df.empty:
-    today = str(datetime.now(pytz.timezone("Asia/Kolkata")).date())
-    month = datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%Y-%m")
-    
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("📅 Daily Trade Logs")
-        st.dataframe(daily_df[daily_df['Date'] == today], use_container_width=True)
-    with col2:
         st.subheader("🗓️ Monthly Trade Logs")
-        st.dataframe(daily_df[daily_df['Month'] == month], use_container_width=True)
+        st.dataframe(daily_df, use_container_width=True)
+    with col2:
+        st.info("The monthly view shows all logged trades.")
 else:
     st.info("📭 Click 'Run Backtest' to see trade signals.")
