@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 # Page setup
 st.set_page_config(page_title="BTC Disparity Dashboard", layout="wide")
@@ -24,17 +24,9 @@ except Exception as e:
     st.error(f"❌ Invalid format: {e}")
     st.stop()
 
-# Display parsed values
-st.subheader("🔍 Parsed Strategy Settings")
-col1, col2, col3 = st.columns(3)
-col1.metric("Disparity MA Length", ma_length)
-col2.metric("Short Period", short_prd)
-col3.metric("Long Period", long_prd)
-
-# Load BTC data (replace with live feed or your CSV)
+# Load BTC data
 @st.cache_data
 def load_data():
-    # Replace this with your actual BTC data source
     df = pd.read_csv("btc_data.csv")  # Must contain 'Date' and 'Close'
     df['Date'] = pd.to_datetime(df['Date'])
     return df
@@ -45,19 +37,15 @@ df = load_data()
 df['MA'] = df['Close'].rolling(window=ma_length).mean()
 df['Disparity'] = (df['Close'] - df['MA']) / df['MA'] * 100
 
-# Plot chart with 2 lines
-st.subheader("📈 Disparity Index Chart")
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(df['Date'], df['Close'], label='BTC Close Price', color='green')
-ax.plot(df['Date'], df['Disparity'], label='Disparity Index (%)', color='blue')
-ax.set_title("Disparity Index Optimized for BTC")
-ax.set_xlabel("Date")
-ax.set_ylabel("Value")
-ax.legend()
-ax.grid(True)
-st.pyplot(fig)
+# Plotly chart
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], mode='lines', name='BTC Close Price', line=dict(color='green')))
+fig.add_trace(go.Scatter(x=df['Date'], y=df['Disparity'], mode='lines', name='Disparity Index (%)', line=dict(color='blue')))
+fig.update_layout(title="Disparity Index Optimized for BTC", xaxis_title="Date", yaxis_title="Value", template="plotly_white")
 
-# Strategy signal (basic logic)
+st.plotly_chart(fig, use_container_width=True)
+
+# Strategy signal
 st.markdown("---")
 if st.button("Run Strategy"):
     signal = "BUY" if short_prd > long_prd else "SELL"
