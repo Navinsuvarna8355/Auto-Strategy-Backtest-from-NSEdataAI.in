@@ -1,32 +1,49 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
+from strategy import apply_disparity_index, generate_signals, simulate_trades
+from fetcher import get_ohlc
+from utils import breakdown_pnl, export_csv
 
-st.set_page_config(page_title="Disparity Index Backtest", layout="wide")
-st.title("📈 Disparity Index Backtest Tool for NIFTY / BANKNIFTY")
+st.set_page_config(layout="wide")
+st.title("📈 Disparity Index Dashboard")
 
-# Strategy Inputs
-length = st.slider("Length", 1, 50, 29)
-short_period = st.slider("Short Period", 1, 50, 27)
-long_period = st.slider("Long Period", 1, 100, 81)
+# --- Sidebar Inputs ---
+symbol = st.sidebar.selectbox("Symbol", ["NIFTY", "BANKNIFTY"])
+di_period = st.sidebar.slider("DI Period", 5, 50, 14)
+di_threshold = st.sidebar.slider("DI Threshold (%)", 0.5, 5.0, 2.0)
 
-# File Upload
-uploaded_file = st.file_uploader("Upload 5-min OHLC CSV", type=["csv"])
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-    df = convert_to_IST(df)
-    df = generate_signals(df, length, short_period, long_period)
-    
-    trade_log, pnl_daily, pnl_monthly = run_backtest(df)
+# --- Fetch & Process Data ---
+df = get_ohlc(symbol)
+df = apply_disparity_index(df, di_period)
+df = generate_signals(df, di_threshold)
+trade_log = simulate_trades(df, symbol)
 
-    st.subheader("📋 Trade Log")
-    st.dataframe(trade_log)
-    export_csv(trade_log, "Trade_Log.csv")
+# --- Display PnL ---
+monthly_pnl, daily_pnl = breakdown_pnl(trade_log)
+st.subheader("📅 Monthly PnL")
+st.dataframe(monthly_pnl)
+st.subheader("📆 Daily PnL")
+st.dataframe(daily_pnl)
 
-    st.subheader("📆 Daily P&L")
-    st.dataframe(pnl_daily)
+# --- Trade Log & Export ---
+st.subheader("📜 Trade Log")
+st.dataframe(trade_log)
+export_csv(trade_log, f"{symbol}_trade_log.csv")
 
-    st.subheader("🗓️ Monthly P&L")
-    st.dataframe(pnl_monthly)
+# --- Plotly Chart ---
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df['timestamp'], y=df['DI_short'], mode='lines', name='DI Short', line=dict(color='blue')))
+fig.add_trace(go.Scatter(x=df['timestamp'], y=df['DI_long'], mode='lines', name='DI Long', line=dict(color='green')))
+
+for _, trade in trade_log.iterrows():
+    fig.add_trace(go.Scatter(x=[trade['Entry Time']], y=[trade['Entry Price']],
+                             mode='markers', name='Buy', marker=dict(color='lime', size=10, symbol='triangle-up')))
+    fig.add_trace(go.Scatter(x=[trade['Exit Time']], y=[trade['Exit Price']],
+                             mode='markers', name='Sell', marker=dict(color='red', size=10, symbol='triangle-down')))
+
+fig.update_layout(title=f"{symbol} Disparity Index Strategy",
+                  xaxis_title="Time (IST)", yaxis_title="DI Value (%)",
+                  template="plotly_dark", height=500)
+
+st.plotly_chart(fig, use_container_width=True)
