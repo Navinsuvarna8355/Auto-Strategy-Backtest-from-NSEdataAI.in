@@ -1,56 +1,47 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
 
 # Page setup
-st.set_page_config(page_title="BTC Disparity Dashboard", layout="wide")
+st.set_page_config(page_title="BTC Disparity Strategy", layout="wide")
 st.title("📊 BTC Strategy Dashboard")
 
-# Sidebar: Manual strategy input
+# --- Sidebar: Separate Inputs ---
 st.sidebar.header("⚙️ Strategy Settings")
-param_input = st.sidebar.text_input(
-    "Type settings like: MA=14, Short=5, Long=20",
-    value="MA=14, Short=5, Long=20"
-)
+ma_length = st.sidebar.number_input("Disparity MA Length", min_value=1, max_value=50, value=14)
+short_prd = st.sidebar.number_input("Short Period", min_value=1, max_value=20, value=5)
+long_prd = st.sidebar.number_input("Long Period", min_value=1, max_value=50, value=20)
 
-# Parse input safely
-try:
-    parts = param_input.replace(" ", "").split(",")
-    param_dict = {k.split("=")[0].lower(): int(k.split("=")[1]) for k in parts}
-    ma_length = param_dict.get("ma", 14)
-    short_prd = param_dict.get("short", 5)
-    long_prd = param_dict.get("long", 20)
-except Exception as e:
-    st.error(f"❌ Invalid format: {e}")
-    st.stop()
+# --- Sample BTC Data Generator ---
+def generate_sample_data():
+    np.random.seed(42)
+    now = datetime.now()
+    dates = pd.date_range(end=now, periods=100, freq='5min')
+    prices = np.cumsum(np.random.randn(len(dates))) + 27500
+    df = pd.DataFrame({'Date': dates, 'Close': prices})
+    return df
 
-# Display parsed values
-st.subheader("🔍 Parsed Strategy Settings")
+df = generate_sample_data()
+
+# --- Disparity Index Calculation ---
+df['MA'] = df['Close'].rolling(window=ma_length).mean()
+df['Disparity'] = (df['Close'] - df['MA']) / df['MA'] * 100
+df = df.dropna()
+
+# --- Display Parsed Settings ---
+st.subheader("🔍 Strategy Settings")
 col1, col2, col3 = st.columns(3)
-col1.metric("Disparity MA Length", ma_length)
+col1.metric("MA Length", ma_length)
 col2.metric("Short Period", short_prd)
 col3.metric("Long Period", long_prd)
 
-# Load BTC data
-@st.cache_data
-def load_data():
-    df = pd.read_csv("btc_data.csv")  # Must contain 'Date' and 'Close'
-    df['Date'] = pd.to_datetime(df['Date'])
-    return df
-
-df = load_data()
-
-# Calculate Disparity Index
-df['MA'] = df['Close'].rolling(window=ma_length).mean()
-df['Disparity'] = (df['Close'] - df['MA']) / df['MA'] * 100
-
-# Prepare chart data
-chart_df = df[['Date', 'Close', 'Disparity']].dropna().set_index('Date')
-
-# Plot chart using Streamlit native line_chart
+# --- Chart (2 Lines Only) ---
 st.subheader("📈 Disparity Index Chart")
+chart_df = df[['Date', 'Close', 'Disparity']].set_index('Date')
 st.line_chart(chart_df)
 
-# Strategy signal
+# --- Signal Logic (Simple) ---
 st.markdown("---")
 if st.button("Run Strategy"):
     signal = "BUY" if short_prd > long_prd else "SELL"
