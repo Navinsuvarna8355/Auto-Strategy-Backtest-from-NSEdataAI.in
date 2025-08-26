@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import pytz
+import plotly.express as px
 
 # --- Page Setup ---
 st.set_page_config(page_title="BTC Auto Strategy", layout="wide")
@@ -31,11 +32,9 @@ st.session_state.threshold = st.sidebar.slider("Signal Threshold (%)", min_value
 def generate_sample_data():
     np.random.seed(42)
     dates = pd.date_range(end=datetime.now(), periods=100, freq='5min')
-    # Generate prices with more volatility for realistic chart and trades
     initial_price = 27500
     volatility = 50 
     prices = initial_price + np.cumsum(np.random.randn(len(dates)) * volatility)
-    # Add some random jumps to simulate market volatility
     for i in range(5):
         jump_idx = np.random.randint(10, 90)
         jump_size = np.random.uniform(-500, 500)
@@ -75,10 +74,11 @@ col1.metric("MA Length", st.session_state.ma_length)
 col2.metric("Short Period", st.session_state.short_prd)
 col3.metric("Long Period", st.session_state.long_prd)
 
-# --- Native Chart ---
-st.subheader("📈 Disparity Index Chart")
-chart_df = df[['Date', 'Close', 'Disparity']].set_index('Date')
-st.line_chart(chart_df)
+# --- Interactive Plotly Chart ---
+st.subheader("📈 Interactive BTC Price Chart")
+fig = px.line(df, x='Date', y='Close', title='BTC Price and Moving Average')
+fig.add_scatter(x=df['Date'], y=df['MA'], name='Moving Average', mode='lines')
+st.plotly_chart(fig, use_container_width=True)
 
 # --- Strategy Toggle ---
 auto_mode = st.toggle("🔄 Auto Strategy Mode", value=False)
