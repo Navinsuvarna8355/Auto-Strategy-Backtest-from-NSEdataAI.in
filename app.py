@@ -75,15 +75,14 @@ def generate_sample_data():
 df = generate_sample_data()
 df['MA'] = df['Close'].rolling(window=st.session_state.ma_length).mean()
 df['Disparity'] = (df['Close'] - df['MA']) / df['MA'] * 100
-df['Disparity_MA'] = df['Disparity'].rolling(window=st.session_state.short_prd).mean()
 df.dropna(inplace=True)
 
-# --- Signal Logic (based on crossover) ---
-def get_trade_signal(current_disparity, current_disparity_ma, prev_disparity, prev_disparity_ma):
-    if prev_disparity < prev_disparity_ma and current_disparity > current_disparity_ma:
-        return "Buy PE" # Cross above - positive momentum
-    elif prev_disparity > prev_disparity_ma and current_disparity < current_disparity_ma:
-        return "Buy CE" # Cross below - negative momentum
+# --- Signal Logic ---
+def get_trade_signal(disparity, threshold):
+    if disparity > threshold:
+        return "Buy PE"
+    elif disparity < -threshold:
+        return "Buy CE"
     return None
 
 # --- Trade Logger ---
@@ -102,59 +101,45 @@ def log_trade(signal, price, disparity):
 # --- Parsed Settings Display ---
 st.subheader("🔍 Parsed Strategy Settings")
 col1, col2, col3 = st.columns(3)
-col1.metric("Disparity MA Length", st.session_state.ma_length)
+col1.metric("MA Length", st.session_state.ma_length)
 col2.metric("Short Period", st.session_state.short_prd)
 col3.metric("Long Period", st.session_state.long_prd)
 
 # --- Interactive Plotly Chart ---
-st.subheader("📈 Disparity Index Chart with Crossover Signals")
-
+st.subheader("📈 Disparity Index Chart")
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=df['Date'], y=df['Disparity'], name='Disparity Index', line=dict(color='blue', width=2)))
-fig.add_trace(go.Scatter(x=df['Date'], y=df['Disparity_MA'], name='Disparity MA', line=dict(color='green', width=2)))
+fig.add_trace(go.Scatter(x=df['Date'], y=df['MA'], name='MA', line=dict(color='orange', width=2)))
 
-# --- Backtest and plotting logic (combined) ---
-if st.button("▶️ Run Backtest"):
-    st.session_state.trade_logs = []
-    buy_ce_signals = []
-    buy_pe_signals = []
-    
-    for i in range(1, len(df)):
-        current_row = df.iloc[i]
-        prev_row = df.iloc[i-1]
-        
-        signal = get_trade_signal(current_row['Disparity'], current_row['Disparity_MA'], prev_row['Disparity'], prev_row['Disparity_MA'])
-        
-        if signal:
-            log_trade(signal, current_row['Close'], current_row['Disparity'])
-            if signal == "Buy PE":
-                buy_pe_signals.append((current_row['Date'], current_row['Disparity']))
-            elif signal == "Buy CE":
-                buy_ce_signals.append((current_row['Date'], current_row['Disparity']))
-
-    # Add Buy CE signals to the chart
-    if buy_ce_signals:
-        fig.add_trace(go.Scatter(
-            x=[x[0] for x in buy_ce_signals],
-            y=[x[1] for x in buy_ce_signals],
-            mode='markers',
-            name='Buy CE',
-            marker=dict(color='green', size=15, symbol='triangle-up')
-        ))
-
-    # Add Buy PE signals to the chart
-    if buy_pe_signals:
-        fig.add_trace(go.Scatter(
-            x=[x[0] for x in buy_pe_signals],
-            y=[x[1] for x in buy_pe_signals],
-            mode='markers',
-            name='Buy PE',
-            marker=dict(color='red', size=15, symbol='triangle-down')
-        ))
-    
-    st.success("Backtest completed! Crossover signals are plotted on the chart.")
+# Get latest signal and plot
+latest = df.iloc[-1]
+signal = get_trade_signal(latest['Disparity'], st.session_state.threshold)
+if signal == "Buy PE":
+    fig.add_trace(go.Scatter(
+        x=[latest['Date']], y=[latest['Disparity']],
+        mode='markers', name='Buy PE Signal',
+        marker=dict(color='red', size=15, symbol='triangle-down'),
+        text=["Buy PE"]
+    ))
+elif signal == "Buy CE":
+    fig.add_trace(go.Scatter(
+        x=[latest['Date']], y=[latest['Disparity']],
+        mode='markers', name='Buy CE Signal',
+        marker=dict(color='green', size=15, symbol='triangle-up'),
+        text=["Buy CE"]
+    ))
 
 st.plotly_chart(fig, use_container_width=True)
+
+# --- Strategy Toggle ---
+auto_mode = st.toggle("🔄 Auto Strategy Mode", value=False)
+
+if auto_mode:
+    if signal:
+        log_trade(signal, latest['Close'], latest['Disparity'])
+        st.success(f"✅ Auto Trade: {signal} @ {latest['Close']:.2f}")
+    else:
+        st.info("No trade signal at this moment.")
 
 # --- Logs Display ---
 st.markdown("---")
@@ -170,4 +155,4 @@ if not daily_df.empty:
         month = datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%Y-%m")
         st.dataframe(daily_df[daily_df['Month'] == month], use_container_width=True)
 else:
-    st.info("📭 Click 'Run Backtest' to see trade signals.")
+    st.info("📭 No trades logged yet. Toggle strategy ON to begin auto-trading.")
