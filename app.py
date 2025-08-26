@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, time, timedelta
 import pytz
-import plotly.express as px
+import plotly.graph_objects as go
 import json
 import os
 
@@ -36,7 +36,7 @@ def load_settings():
 # --- Persistent Strategy Settings (with load on startup) ---
 if "ma_length" not in st.session_state:
     st.session_state.ma_length = 20
-    load_settings() # Load settings only on initial run
+    load_settings()
 if "short_prd" not in st.session_state:
     st.session_state.short_prd = 3
 if "long_prd" not in st.session_state:
@@ -45,7 +45,7 @@ if "threshold" not in st.session_state:
     st.session_state.threshold = 1.5
 if "trade_logs" not in st.session_state:
     st.session_state.trade_logs = []
-
+    
 # --- Sidebar Inputs ---
 st.sidebar.header("⚙️ Strategy Settings")
 st.session_state.ma_length = st.sidebar.number_input("Disparity MA Length", min_value=1, max_value=50, value=st.session_state.ma_length)
@@ -57,29 +57,26 @@ st.session_state.threshold = st.sidebar.slider("Signal Threshold (%)", min_value
 if st.sidebar.button("💾 Save Settings"):
     save_settings()
 
-# --- Sample BTC Data ---
+# --- Sample BTC Data for Candlestick Chart ---
 def generate_sample_data():
     np.random.seed(42)
-    
-    # Define the start and end times for the trading day, including pre-market
     start_time = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
     end_time = datetime.now().replace(hour=15, minute=30, second=0, microsecond=0)
-    
-    # Generate data points every 5 minutes within this range
     time_diff = end_time - start_time
-    num_periods = int(time_diff.total_seconds() / 300) # 300 seconds = 5 minutes
+    num_periods = int(time_diff.total_seconds() / 300)
+    
     dates = pd.date_range(start=start_time, periods=num_periods, freq='5min')
     
-    # Generate prices with volatility and random jumps
-    initial_price = 27500
-    volatility = 50 
-    prices = initial_price + np.cumsum(np.random.randn(len(dates)) * volatility)
-    for i in range(5):
-        jump_idx = np.random.randint(10, num_periods - 10)
-        jump_size = np.random.uniform(-500, 500)
-        prices[jump_idx:] += jump_size
-        
-    return pd.DataFrame({'Date': dates, 'Close': prices})
+    prices = 27500 + np.cumsum(np.random.randn(num_periods) * 50)
+    
+    # Create OHLC data
+    ohlc = pd.DataFrame(index=dates, columns=['Open', 'High', 'Low', 'Close'])
+    ohlc['Open'] = prices
+    ohlc['Close'] = ohlc['Open'] + np.random.randn(num_periods) * 25
+    ohlc['High'] = ohlc[['Open', 'Close']].max(axis=1) + np.abs(np.random.randn(num_periods) * 10)
+    ohlc['Low'] = ohlc[['Open', 'Close']].min(axis=1) - np.abs(np.random.randn(num_periods) * 10)
+    
+    return ohlc.reset_index().rename(columns={'index': 'Date'})
 
 df = generate_sample_data()
 df['MA'] = df['Close'].rolling(window=st.session_state.ma_length).mean()
@@ -89,9 +86,9 @@ df.dropna(inplace=True)
 # --- Signal Logic ---
 def get_trade_signal(disparity, threshold):
     if disparity > threshold:
-        return "Buy CE"
-    elif disparity < -threshold:
         return "Buy PE"
+    elif disparity < -threshold:
+        return "Buy CE"
     return None
 
 # --- Trade Logger ---
@@ -114,31 +111,64 @@ col1.metric("MA Length", st.session_state.ma_length)
 col2.metric("Short Period", st.session_state.short_prd)
 col3.metric("Long Period", st.session_state.long_prd)
 
-# --- Interactive Plotly Chart ---
-st.subheader("📈 Interactive BTC Price Chart")
-fig = px.line(df, x='Date', y='Close', title='BTC Price and Moving Average')
-fig.add_scatter(x=df['Date'], y=df['MA'], name='Moving Average', mode='lines')
+# --- Interactive Plotly Candlestick Chart ---
+st.subheader("📈 Interactive Candlestick Chart with Signals")
+fig = go.Figure(data=[go.Candlestick(x=df['Date'],
+                open=df['Open'],
+                high=df['High'],
+                low=df['Low'],
+                close=df['Close'])])
+
+# Add MA line
+fig.add_trace(go.Scatter(x=df['Date'], y=df['MA'], mode='lines', name='MA', line=dict(color='orange', width=2)))
+
+# Backtest button
+if st.button("▶️ Run Backtest"):
+    st.session_state.trade_logs = []
+    buy_ce_signals = []
+    buy_pe_signals = []
+    for index, row in df.iterrows():
+        signal = get_trade_signal(row['Disparity'], st.session_state.threshold)
+        if signal == "Buy CE":
+            log_trade(signal, row['Close'], row['Disparity'])
+            buy_ce_signals.append((row['Date'], row['Low'] - 100))
+        elif signal == "Buy PE":
+            log_trade(signal, row['Close'], row['Disparity'])
+            buy_pe_signals.append((row['Date'], row['High'] + 100))
+
+    # Add Buy CE signals to the chart
+    if buy_ce_signals:
+        fig.add_trace(go.Scatter(
+            x=[x[0] for x in buy_ce_signals],
+            y=[x[1] for x in buy_ce_signals],
+            mode='markers',
+            name='Buy CE',
+            marker=dict(color='green', size=15, symbol='triangle-up'),
+            text=["Buy CE"] * len(buy_ce_signals)
+        ))
+
+    # Add Buy PE signals to the chart
+    if buy_pe_signals:
+        fig.add_trace(go.Scatter(
+            x=[x[0] for x in buy_pe_signals],
+            y=[x[1] for x in buy_pe_signals],
+            mode='markers',
+            name='Buy PE',
+            marker=dict(color='red', size=15, symbol='triangle-down'),
+            text=["Buy PE"] * len(buy_pe_signals)
+        ))
+    
+    st.success("Backtest completed! Signals are plotted on the chart.")
+
 st.plotly_chart(fig, use_container_width=True)
-
-# --- Strategy Toggle ---
-auto_mode = st.toggle("🔄 Auto Strategy Mode", value=False)
-
-if auto_mode:
-    latest = df.iloc[-1]
-    signal = get_trade_signal(latest['Disparity'], st.session_state.threshold)
-    if signal:
-        log_trade(signal, latest['Close'], latest['Disparity'])
-        st.success(f"✅ Auto Trade: {signal} @ {latest['Close']:.2f}")
-    else:
-        st.info("No trade signal at this moment.")
 
 # --- Logs Display ---
 st.markdown("---")
 daily_df = pd.DataFrame(st.session_state.trade_logs)
-today = str(datetime.now(pytz.timezone("Asia/Kolkata")).date())
-month = datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%Y-%m")
-
-if not daily_df.empty and all(col in daily_df.columns for col in ['Date', 'Month']):
+if not daily_df.empty:
+    today = str(datetime.now(pytz.timezone("Asia/Kolkata")).date())
+    month = datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%Y-%m")
+    
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("📅 Daily Trade Logs")
@@ -147,4 +177,4 @@ if not daily_df.empty and all(col in daily_df.columns for col in ['Date', 'Month
         st.subheader("🗓️ Monthly Trade Logs")
         st.dataframe(daily_df[daily_df['Month'] == month], use_container_width=True)
 else:
-    st.info("📭 No trades logged yet. Toggle strategy ON to begin auto-trading.")
+    st.info("📭 Click 'Run Backtest' to see trade signals.")
