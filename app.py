@@ -3,8 +3,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import pytz
+import plotly.graph_objects as go
 
-# --- Setup ---
+# --- Page Setup ---
 st.set_page_config(page_title="BTC Auto Strategy", layout="wide")
 st.title("📊 BTC Strategy Dashboard")
 
@@ -55,16 +56,30 @@ def log_trade(signal, price, disparity, logs):
     })
     return logs
 
-# --- Run Strategy ---
+# --- Parsed Settings Display ---
 st.subheader("🔍 Parsed Strategy Settings")
 col1, col2, col3 = st.columns(3)
 col1.metric("MA Length", ma_length)
 col2.metric("Short Period", short_prd)
 col3.metric("Long Period", long_prd)
 
-st.subheader("📈 Disparity Chart")
-st.line_chart(df.set_index('Date')[['Close', 'Disparity']])
+# --- Chart with Plotly ---
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name='Close', line=dict(color='blue')))
+fig.add_trace(go.Scatter(x=df['Date'], y=df['Disparity'], name='Disparity', line=dict(color='orange'), yaxis='y2'))
 
+fig.update_layout(
+    title="📈 Disparity Index Chart",
+    xaxis=dict(title='Time'),
+    yaxis=dict(title='Close'),
+    yaxis2=dict(title='Disparity %', overlaying='y', side='right'),
+    legend=dict(x=0.01, y=0.99),
+    margin=dict(l=40, r=40, t=40, b=40)
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# --- Run Strategy ---
 if st.button("Run Strategy"):
     latest = df.iloc[-1]
     signal = get_trade_signal(latest['Disparity'], threshold)
@@ -76,11 +91,14 @@ if st.button("Run Strategy"):
 
 # --- Logs Display ---
 st.markdown("---")
-st.subheader("📅 Daily Trade Logs")
 daily_df = pd.DataFrame(trade_logs)
 today = datetime.now(pytz.timezone('Asia/Kolkata')).date()
-st.dataframe(daily_df[daily_df['Date'] == today], use_container_width=True)
-
-st.subheader("🗓️ Monthly Trade Logs")
 month = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m")
-st.dataframe(daily_df[daily_df['Month'] == month], use_container_width=True)
+
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("📅 Daily Trade Logs")
+    st.dataframe(daily_df[daily_df['Date'] == today], use_container_width=True)
+with col2:
+    st.subheader("🗓️ Monthly Trade Logs")
+    st.dataframe(daily_df[daily_df['Month'] == month], use_container_width=True)
