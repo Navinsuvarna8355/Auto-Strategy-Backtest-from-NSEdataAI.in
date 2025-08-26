@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import pytz
-import plotly.graph_objects as go
 
 # --- Page Setup ---
 st.set_page_config(page_title="BTC Auto Strategy", layout="wide")
@@ -63,21 +62,10 @@ col1.metric("MA Length", ma_length)
 col2.metric("Short Period", short_prd)
 col3.metric("Long Period", long_prd)
 
-# --- Chart with Plotly ---
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name='Close', line=dict(color='blue')))
-fig.add_trace(go.Scatter(x=df['Date'], y=df['Disparity'], name='Disparity', line=dict(color='orange'), yaxis='y2'))
-
-fig.update_layout(
-    title="📈 Disparity Index Chart",
-    xaxis=dict(title='Time'),
-    yaxis=dict(title='Close'),
-    yaxis2=dict(title='Disparity %', overlaying='y', side='right'),
-    legend=dict(x=0.01, y=0.99),
-    margin=dict(l=40, r=40, t=40, b=40)
-)
-
-st.plotly_chart(fig, use_container_width=True)
+# --- Native Chart ---
+st.subheader("📈 Disparity Index Chart")
+chart_df = df[['Date', 'Close', 'Disparity']].set_index('Date')
+st.line_chart(chart_df)
 
 # --- Run Strategy ---
 if st.button("Run Strategy"):
