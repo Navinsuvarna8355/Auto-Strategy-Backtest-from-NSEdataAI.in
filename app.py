@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 
 # Page setup
 st.set_page_config(page_title="BTC Disparity Dashboard", layout="wide")
@@ -24,6 +23,13 @@ except Exception as e:
     st.error(f"❌ Invalid format: {e}")
     st.stop()
 
+# Display parsed values
+st.subheader("🔍 Parsed Strategy Settings")
+col1, col2, col3 = st.columns(3)
+col1.metric("Disparity MA Length", ma_length)
+col2.metric("Short Period", short_prd)
+col3.metric("Long Period", long_prd)
+
 # Load BTC data
 @st.cache_data
 def load_data():
@@ -37,13 +43,12 @@ df = load_data()
 df['MA'] = df['Close'].rolling(window=ma_length).mean()
 df['Disparity'] = (df['Close'] - df['MA']) / df['MA'] * 100
 
-# Plotly chart
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], mode='lines', name='BTC Close Price', line=dict(color='green')))
-fig.add_trace(go.Scatter(x=df['Date'], y=df['Disparity'], mode='lines', name='Disparity Index (%)', line=dict(color='blue')))
-fig.update_layout(title="Disparity Index Optimized for BTC", xaxis_title="Date", yaxis_title="Value", template="plotly_white")
+# Prepare chart data
+chart_df = df[['Date', 'Close', 'Disparity']].dropna().set_index('Date')
 
-st.plotly_chart(fig, use_container_width=True)
+# Plot chart using Streamlit native line_chart
+st.subheader("📈 Disparity Index Chart")
+st.line_chart(chart_df)
 
 # Strategy signal
 st.markdown("---")
