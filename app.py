@@ -113,14 +113,16 @@ col3.metric("Long Period", st.session_state.long_prd)
 
 # --- Interactive Plotly Candlestick Chart ---
 st.subheader("📈 Interactive Candlestick Chart with Signals")
+
+# Initialize the figure with a candlestick trace
 fig = go.Figure(data=[go.Candlestick(x=df['Date'],
                 open=df['Open'],
                 high=df['High'],
                 low=df['Low'],
                 close=df['Close'])])
 
-# Add MA line
-fig.add_trace(go.Scatter(x=df['Date'], y=df['MA'], mode='lines', name='MA', line=dict(color='orange', width=2)))
+# Add the MA line
+fig.add_trace(go.Scatter(x=df['Date'], y=df['MA'], name='Moving Average', line=dict(color='orange', width=2)))
 
 # Backtest button
 if st.button("▶️ Run Backtest"):
