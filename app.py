@@ -177,7 +177,6 @@ if auto_mode:
         if nifty_signal:
             log_trade(nifty_signal, current_row['Close'], current_row['Disparity'], 'Nifty')
             st.success(f"✅ Nifty Trade: {nifty_signal} @ {current_row['Close']:.2f}")
-            # Plot the signal on the Nifty chart
             if nifty_signal == "Buy PE":
                 fig_nifty.add_trace(go.Scatter(x=[current_row['Date']], y=[current_row['Disparity']], mode='markers', name='Buy PE Signal', marker=dict(color='red', size=15, symbol='triangle-down')))
             elif nifty_signal == "Buy CE":
@@ -191,7 +190,6 @@ if auto_mode:
         if banknifty_signal:
             log_trade(banknifty_signal, current_row['Close'], current_row['Disparity'], 'BankNifty')
             st.success(f"✅ BankNifty Trade: {banknifty_signal} @ {current_row['Close']:.2f}")
-            # Plot the signal on the BankNifty chart
             if banknifty_signal == "Buy PE":
                 fig_banknifty.add_trace(go.Scatter(x=[current_row['Date']], y=[current_row['Disparity']], mode='markers', name='Buy PE Signal', marker=dict(color='red', size=15, symbol='triangle-down')))
             elif banknifty_signal == "Buy CE":
