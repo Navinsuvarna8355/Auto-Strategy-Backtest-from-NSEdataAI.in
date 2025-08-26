@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, time, timedelta
 import pytz
-import plotly.graph_objects as go
+import plotly.express as px
 import json
 import os
 
@@ -107,27 +107,27 @@ col3.metric("Long Period", st.session_state.long_prd)
 
 # --- Interactive Plotly Chart ---
 st.subheader("📈 Disparity Index Chart")
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=df['Date'], y=df['Disparity'], name='Disparity Index', line=dict(color='blue', width=2)))
-fig.add_trace(go.Scatter(x=df['Date'], y=df['MA'], name='MA', line=dict(color='orange', width=2)))
+fig = px.line(df, x='Date', y='Close', title='BTC Price and Moving Average')
+fig.add_scatter(x=df['Date'], y=df['MA'], name='Moving Average', mode='lines')
+fig.update_layout(xaxis_title="Date", yaxis_title="Price")
 
 # Get latest signal and plot
 latest = df.iloc[-1]
 signal = get_trade_signal(latest['Disparity'], st.session_state.threshold)
 if signal == "Buy PE":
-    fig.add_trace(go.Scatter(
-        x=[latest['Date']], y=[latest['Disparity']],
+    fig.add_scatter(
+        x=[latest['Date']], y=[latest['Close']],
         mode='markers', name='Buy PE Signal',
         marker=dict(color='red', size=15, symbol='triangle-down'),
         text=["Buy PE"]
-    ))
+    )
 elif signal == "Buy CE":
-    fig.add_trace(go.Scatter(
-        x=[latest['Date']], y=[latest['Disparity']],
+    fig.add_scatter(
+        x=[latest['Date']], y=[latest['Close']],
         mode='markers', name='Buy CE Signal',
         marker=dict(color='green', size=15, symbol='triangle-up'),
         text=["Buy CE"]
-    ))
+    )
 
 st.plotly_chart(fig, use_container_width=True)
 
