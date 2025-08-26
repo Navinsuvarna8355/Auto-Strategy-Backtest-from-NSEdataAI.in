@@ -1,4 +1,29 @@
 import streamlit as st
+from strategy import generate_signals
+from backtest import run_backtest
+from utils import convert_to_IST
+
+st.title("📈 Disparity Index Backtest Tool for NIFTY/BANKNIFTY")
+
+length = st.slider("Length", min_value=1, max_value=50, value=29)
+short_period = st.slider("Short Period", min_value=1, max_value=50, value=27)
+long_period = st.slider("Long Period", min_value=1, max_value=100, value=81)
+
+uploaded_file = st.file_uploader("Upload 5-min OHLC CSV", type=["csv"])
+if uploaded_file:
+    df = convert_to_IST(uploaded_file)
+    df = generate_signals(df, length, short_period, long_period)
+    trade_log, pnl_daily, pnl_monthly = run_backtest(df)
+
+    st.subheader("📋 Trade Log")
+    st.dataframe(trade_log)
+
+    st.subheader("📆 Daily P&L")
+    st.dataframe(pnl_daily)
+
+    st.subheader("🗓️ Monthly P&L")
+    st.dataframe(pnl_monthly)
+import streamlit as st
 import importlib
 from datetime import datetime
 
