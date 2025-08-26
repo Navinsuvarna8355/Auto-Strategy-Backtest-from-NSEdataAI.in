@@ -34,29 +34,28 @@ def load_settings(name):
 # --- Persistent Strategy Settings (with load on startup) ---
 # Nifty Settings
 nifty_settings = load_settings("nifty")
-if nifty_settings:
-    st.session_state.nifty_ma_length = nifty_settings["ma_length"]
-    st.session_state.nifty_short_prd = nifty_settings["short_prd"]
-    st.session_state.nifty_long_prd = nifty_settings["long_prd"]
-    st.session_state.nifty_threshold = nifty_settings["threshold"]
-else:
-    st.session_state.nifty_ma_length = 20
-    st.session_state.nifty_short_prd = 3
-    st.session_state.nifty_long_prd = 6
-    st.session_state.nifty_threshold = 1.5
+if "nifty_ma_length" not in st.session_state:
+    st.session_state.nifty_ma_length = nifty_settings["ma_length"] if nifty_settings else 20
+if "nifty_short_prd" not in st.session_state:
+    st.session_state.nifty_short_prd = nifty_settings["short_prd"] if nifty_settings else 3
+if "nifty_long_prd" not in st.session_state:
+    st.session_state.nifty_long_prd = nifty_settings["long_prd"] if nifty_settings else 6
+if "nifty_threshold" not in st.session_state:
+    st.session_state.nifty_threshold = nifty_settings["threshold"] if nifty_settings else 1.5
 
 # BankNifty Settings
 banknifty_settings = load_settings("banknifty")
-if banknifty_settings:
-    st.session_state.banknifty_ma_length = banknifty_settings["ma_length"]
-    st.session_state.banknifty_short_prd = banknifty_settings["short_prd"]
-    st.session_state.banknifty_long_prd = banknifty_settings["long_prd"]
-    st.session_state.banknifty_threshold = banknifty_settings["threshold"]
-else:
-    st.session_state.banknifty_ma_length = 20
-    st.session_state.banknifty_short_prd = 3
-    st.session_state.banknifty_long_prd = 6
-    st.session_state.banknifty_threshold = 1.5
+if "banknifty_ma_length" not in st.session_state:
+    st.session_state.banknifty_ma_length = banknifty_settings["ma_length"] if banknifty_settings else 20
+if "banknifty_short_prd" not in st.session_state:
+    st.session_state.banknifty_short_prd = banknifty_settings["short_prd"] if banknifty_settings else 3
+if "banknifty_long_prd" not in st.session_state:
+    st.session_state.banknifty_long_prd = banknifty_settings["long_prd"] if banknifty_settings else 6
+if "banknifty_threshold" not in st.session_state:
+    st.session_state.banknifty_threshold = banknifty_settings["threshold"] if banknifty_settings else 1.5
+
+if "trade_logs" not in st.session_state:
+    st.session_state.trade_logs = []
 
 # --- Sample Data Generator ---
 def generate_sample_data(index_name):
@@ -82,19 +81,19 @@ def generate_sample_data(index_name):
     return pd.DataFrame({'Date': dates, 'Close': prices})
 
 # --- Signal Logic (based on crossover) ---
-def get_trade_signal(current_disparity, current_disparity_ma, prev_disparity, prev_disparity_ma):
+def get_trade_signal(current_disparity, current_disparity_ma, prev_disparity, prev_disparity_ma, threshold):
     if prev_disparity < prev_disparity_ma and current_disparity > current_disparity_ma:
-        return "Buy PE"
+        if current_disparity > threshold:
+            return "Buy PE"
     elif prev_disparity > prev_disparity_ma and current_disparity < current_disparity_ma:
-        return "Buy CE"
+        if current_disparity < -threshold:
+            return "Buy CE"
     return None
 
 # --- Trade Logger ---
 def log_trade(signal, price, disparity, index_name):
     ist = pytz.timezone('Asia/Kolkata')
     now = datetime.now(ist)
-    if 'trade_logs' not in st.session_state:
-        st.session_state.trade_logs = []
     st.session_state.trade_logs.append({
         "Index": index_name,
         "Timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
@@ -110,12 +109,12 @@ st.header("Nifty 📈")
 col1, col2 = st.columns(2)
 with col1:
     st.subheader("⚙️ Nifty Settings")
-    nifty_ma_length = st.number_input("Nifty MA Length", min_value=1, max_value=50, value=st.session_state.nifty_ma_length, key="nifty_ma_length_input")
-    nifty_short_prd = st.number_input("Nifty Short Period", min_value=1, max_value=20, value=st.session_state.nifty_short_prd, key="nifty_short_prd_input")
-    nifty_long_prd = st.number_input("Nifty Long Period", min_value=1, max_value=50, value=st.session_state.nifty_long_prd, key="nifty_long_prd_input")
-    nifty_threshold = st.slider("Nifty Signal Threshold (%)", min_value=0.5, max_value=5.0, value=st.session_state.nifty_threshold, step=0.1, key="nifty_threshold_slider")
+    st.session_state.nifty_ma_length = st.number_input("Nifty MA Length", min_value=1, max_value=50, value=st.session_state.nifty_ma_length, key="nifty_ma_length_input")
+    st.session_state.nifty_short_prd = st.number_input("Nifty Short Period", min_value=1, max_value=20, value=st.session_state.nifty_short_prd, key="nifty_short_prd_input")
+    st.session_state.nifty_long_prd = st.number_input("Nifty Long Period", min_value=1, max_value=50, value=st.session_state.nifty_long_prd, key="nifty_long_prd_input")
+    st.session_state.nifty_threshold = st.slider("Nifty Signal Threshold (%)", min_value=0.5, max_value=5.0, value=st.session_state.nifty_threshold, step=0.1, key="nifty_threshold_slider")
     if st.button("💾 Save Nifty Settings"):
-        save_settings(nifty_ma_length, nifty_short_prd, nifty_long_prd, nifty_threshold, "nifty")
+        save_settings(st.session_state.nifty_ma_length, st.session_state.nifty_short_prd, st.session_state.nifty_long_prd, st.session_state.nifty_threshold, "nifty")
 
 with col2:
     st.subheader("🔍 Parsed Nifty Settings")
@@ -134,30 +133,18 @@ fig_nifty = go.Figure()
 fig_nifty.add_trace(go.Scatter(x=df_nifty['Date'], y=df_nifty['Disparity'], name='Disparity Index', line=dict(color='blue', width=2)))
 fig_nifty.add_trace(go.Scatter(x=df_nifty['Date'], y=df_nifty['Disparity_MA'], name='Disparity MA', line=dict(color='green', width=2)))
 
-if st.button("▶️ Run Nifty Backtest"):
-    st.session_state.nifty_trade_logs = []
-    for i in range(1, len(df_nifty)):
-        current_row = df_nifty.iloc[i]
-        prev_row = df_nifty.iloc[i-1]
-        signal = get_trade_signal(current_row['Disparity'], current_row['Disparity_MA'], prev_row['Disparity'], prev_row['Disparity_MA'])
-        if signal:
-            log_trade(signal, current_row['Close'], current_row['Disparity'], 'Nifty')
-    st.success("Nifty backtest completed!")
-
-st.plotly_chart(fig_nifty, use_container_width=True)
-
 # --- BankNifty Section ---
 st.markdown("---")
 st.header("BankNifty 📈")
 col3, col4 = st.columns(2)
 with col3:
     st.subheader("⚙️ BankNifty Settings")
-    banknifty_ma_length = st.number_input("BankNifty MA Length", min_value=1, max_value=50, value=st.session_state.banknifty_ma_length, key="banknifty_ma_length_input")
-    banknifty_short_prd = st.number_input("BankNifty Short Period", min_value=1, max_value=20, value=st.session_state.banknifty_short_prd, key="banknifty_short_prd_input")
-    banknifty_long_prd = st.number_input("BankNifty Long Period", min_value=1, max_value=50, value=st.session_state.banknifty_long_prd, key="banknifty_long_prd_input")
-    banknifty_threshold = st.slider("BankNifty Signal Threshold (%)", min_value=0.5, max_value=5.0, value=st.session_state.banknifty_threshold, step=0.1, key="banknifty_threshold_slider")
+    st.session_state.banknifty_ma_length = st.number_input("BankNifty MA Length", min_value=1, max_value=50, value=st.session_state.banknifty_ma_length, key="banknifty_ma_length_input")
+    st.session_state.banknifty_short_prd = st.number_input("BankNifty Short Period", min_value=1, max_value=20, value=st.session_state.banknifty_short_prd, key="banknifty_short_prd_input")
+    st.session_state.banknifty_long_prd = st.number_input("BankNifty Long Period", min_value=1, max_value=50, value=st.session_state.banknifty_long_prd, key="banknifty_long_prd_input")
+    st.session_state.banknifty_threshold = st.slider("BankNifty Signal Threshold (%)", min_value=0.5, max_value=5.0, value=st.session_state.banknifty_threshold, step=0.1, key="banknifty_threshold_slider")
     if st.button("💾 Save BankNifty Settings"):
-        save_settings(banknifty_ma_length, banknifty_short_prd, banknifty_long_prd, banknifty_threshold, "banknifty")
+        save_settings(st.session_state.banknifty_ma_length, st.session_state.banknifty_short_prd, st.session_state.banknifty_long_prd, st.session_state.banknifty_threshold, "banknifty")
 
 with col4:
     st.subheader("🔍 Parsed BankNifty Settings")
@@ -176,23 +163,52 @@ fig_banknifty = go.Figure()
 fig_banknifty.add_trace(go.Scatter(x=df_banknifty['Date'], y=df_banknifty['Disparity'], name='Disparity Index', line=dict(color='blue', width=2)))
 fig_banknifty.add_trace(go.Scatter(x=df_banknifty['Date'], y=df_banknifty['Disparity_MA'], name='Disparity MA', line=dict(color='green', width=2)))
 
-if st.button("▶️ Run BankNifty Backtest"):
-    st.session_state.banknifty_trade_logs = []
-    for i in range(1, len(df_banknifty)):
-        current_row = df_banknifty.iloc[i]
-        prev_row = df_banknifty.iloc[i-1]
-        signal = get_trade_signal(current_row['Disparity'], current_row['Disparity_MA'], prev_row['Disparity'], prev_row['Disparity_MA'])
-        if signal:
-            log_trade(signal, current_row['Close'], current_row['Disparity'], 'BankNifty')
-    st.success("BankNifty backtest completed!")
+# --- Auto Trading & Signal Logging ---
+auto_mode = st.toggle("🔄 Auto Strategy Mode", value=False)
+st.markdown("---")
+st.header("📊 Live Trade Logs")
 
+if auto_mode:
+    # Nifty Crossover Check
+    if len(df_nifty) >= 2:
+        prev_row = df_nifty.iloc[-2]
+        current_row = df_nifty.iloc[-1]
+        nifty_signal = get_trade_signal(current_row['Disparity'], current_row['Disparity_MA'], prev_row['Disparity'], prev_row['Disparity_MA'], st.session_state.nifty_threshold)
+        if nifty_signal:
+            log_trade(nifty_signal, current_row['Close'], current_row['Disparity'], 'Nifty')
+            st.success(f"✅ Nifty Trade: {nifty_signal} @ {current_row['Close']:.2f}")
+            # Plot the signal on the Nifty chart
+            if nifty_signal == "Buy PE":
+                fig_nifty.add_trace(go.Scatter(x=[current_row['Date']], y=[current_row['Disparity']], mode='markers', name='Buy PE Signal', marker=dict(color='red', size=15, symbol='triangle-down')))
+            elif nifty_signal == "Buy CE":
+                fig_nifty.add_trace(go.Scatter(x=[current_row['Date']], y=[current_row['Disparity']], mode='markers', name='Buy CE Signal', marker=dict(color='green', size=15, symbol='triangle-up')))
+
+    # BankNifty Crossover Check
+    if len(df_banknifty) >= 2:
+        prev_row = df_banknifty.iloc[-2]
+        current_row = df_banknifty.iloc[-1]
+        banknifty_signal = get_trade_signal(current_row['Disparity'], current_row['Disparity_MA'], prev_row['Disparity'], prev_row['Disparity_MA'], st.session_state.banknifty_threshold)
+        if banknifty_signal:
+            log_trade(banknifty_signal, current_row['Close'], current_row['Disparity'], 'BankNifty')
+            st.success(f"✅ BankNifty Trade: {banknifty_signal} @ {current_row['Close']:.2f}")
+            # Plot the signal on the BankNifty chart
+            if banknifty_signal == "Buy PE":
+                fig_banknifty.add_trace(go.Scatter(x=[current_row['Date']], y=[current_row['Disparity']], mode='markers', name='Buy PE Signal', marker=dict(color='red', size=15, symbol='triangle-down')))
+            elif banknifty_signal == "Buy CE":
+                fig_banknifty.add_trace(go.Scatter(x=[current_row['Date']], y=[current_row['Disparity']], mode='markers', name='Buy CE Signal', marker=dict(color='green', size=15, symbol='triangle-up')))
+
+    if not st.session_state.trade_logs:
+        st.info("No trade signal at this moment.")
+else:
+    st.info("🔄 Auto Strategy Mode is OFF. Turn it ON to start live trading.")
+
+# --- Display Charts ---
+st.plotly_chart(fig_nifty, use_container_width=True)
 st.plotly_chart(fig_banknifty, use_container_width=True)
 
 # --- Logs Display ---
-st.markdown("---")
-st.header("📊 Combined Trade Logs")
 if "trade_logs" in st.session_state and st.session_state.trade_logs:
     daily_df = pd.DataFrame(st.session_state.trade_logs)
     st.dataframe(daily_df, use_container_width=True)
 else:
-    st.info("📭 Click 'Run Backtest' on either index to see trade signals.")
+    st.info("📭 No trades logged yet. Toggle strategy ON to begin auto-trading.")
