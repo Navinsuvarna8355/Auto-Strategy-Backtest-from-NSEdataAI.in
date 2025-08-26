@@ -41,11 +41,15 @@ def generate_sample_data():
     num_periods = int(time_diff.total_seconds() / 300) # 300 seconds = 5 minutes
     dates = pd.date_range(start=start_time, periods=num_periods, freq='5min')
     
-    # Generate prices with volatility
+    # Generate prices with volatility and random jumps
     initial_price = 27500
     volatility = 50 
     prices = initial_price + np.cumsum(np.random.randn(len(dates)) * volatility)
-    
+    for i in range(5):
+        jump_idx = np.random.randint(10, num_periods - 10)
+        jump_size = np.random.uniform(-500, 500)
+        prices[jump_idx:] += jump_size
+        
     return pd.DataFrame({'Date': dates, 'Close': prices})
 
 df = generate_sample_data()
@@ -81,10 +85,11 @@ col1.metric("MA Length", st.session_state.ma_length)
 col2.metric("Short Period", st.session_state.short_prd)
 col3.metric("Long Period", st.session_state.long_prd)
 
-# --- Native Chart ---
-st.subheader("📈 Disparity Index Chart")
-chart_df = df[['Date', 'Close', 'Disparity']].set_index('Date')
-st.line_chart(chart_df)
+# --- Interactive Plotly Chart ---
+st.subheader("📈 Interactive BTC Price Chart")
+fig = px.line(df, x='Date', y='Close', title='BTC Price and Moving Average')
+fig.add_scatter(x=df['Date'], y=df['MA'], name='Moving Average', mode='lines')
+st.plotly_chart(fig, use_container_width=True)
 
 # --- Strategy Toggle ---
 auto_mode = st.toggle("🔄 Auto Strategy Mode", value=False)
